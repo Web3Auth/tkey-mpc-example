@@ -32,4 +32,5 @@ export const tKey = new ThresholdKey({
   },
   serviceProvider: torusSp as any,
   storageLayer: storageLayer as any,
+  manualSync: true,
 });

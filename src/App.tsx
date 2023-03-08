@@ -1,5 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import './App.css';
+import { Client } from "@toruslabs/tss-client";
+import * as tss from "@toruslabs/tss-lib";
 import swal from 'sweetalert';
 import {tKey} from "./tkey"
 import { EthereumPrivateKeyProvider } from "@web3auth/ethereum-provider";
@@ -7,18 +9,74 @@ import Web3 from "web3";
 import { generatePrivate } from "eccrypto";
 import BN from "bn.js";
 import { getPubKeyPoint } from "@tkey/common-types";
+import { createSockets, fetchPostboxKeyAndSigs, getDKLSCoeff, getEcCrypto, getTSSPubKey } from "./utils";
+import keccak256 from "keccak256";
+
+const ec = getEcCrypto();
 
 const factorKey = new BN(generatePrivate());
 const factorPub = getPubKeyPoint(factorKey);
 
 const deviceTSSShare = new BN(generatePrivate());
-const deviceTSSIndex = 2;
+const deviceTSSIndex = 3;
+
+const parties = 4;
+const clientIndex = parties - 1;
+
+const DELIMITERS = {
+	Delimiter1: "\u001c",
+	Delimiter2: "\u0015",
+	Delimiter3: "\u0016",
+	Delimiter4: "\u0017",
+};
+
+const randomSessionNonce = keccak256(generatePrivate().toString("hex") + Date.now());
+
+const tssImportUrl = `${process.env.PUBLIC_URL}/dkls_19.wasm`;
+const setupSockets = async (tssWSEndpoints: string[]) => {
+	const sockets = await createSockets(tssWSEndpoints);
+	// wait for websockets to be connected
+	await new Promise((resolve) => {
+		const checkConnectionTimer = setInterval(() => {
+		for (let i = 0; i < sockets.length; i++) {
+			if (sockets[i] !== null && !sockets[i].connected) return;
+		}
+		clearInterval(checkConnectionTimer);
+		resolve(true);
+		}, 100);
+	});
+
+	return sockets;
+};
+
+const generateTSSEndpoints = (parties: number, clientIndex: number) => {
+	const endpoints: string[] = [];
+	const tssWSEndpoints: string[] = [];
+	const partyIndexes: number[] = [];
+	for (let i = 0; i < parties ; i++) {
+	  partyIndexes.push(i);
+	  if (i === clientIndex) {
+		endpoints.push(null as any);
+		tssWSEndpoints.push(null as any);
+	  } else {
+		endpoints.push(`https://sapphire-dev-2-${i+1}.authnetwork.dev/tss`);
+		tssWSEndpoints.push(`https://sapphire-dev-2-${i+1}.authnetwork.dev`);
+	  }
+	}
+	return { endpoints, tssWSEndpoints, partyIndexes };
+};
+
+
 
 function App() {
 	const [user, setUser] = useState<any>(null);
 	const [privateKey, setPrivateKey] = useState<any>();
 	const [provider, setProvider] = useState<any>();
-	// const [tkeyObject] = useState<any>(tKey);
+	const [tkeyObject] = useState<any>(tKey);
+	const [signatures, setSignatures] = useState<any>(null);
+	const [verifierId, setVerifierId] = useState<any>(null);
+
+	const vid = `mpc-key-demo-passwordless${DELIMITERS.Delimiter1}${verifierId}`;
 
 	// Init Service Provider inside the useEffect Method
 	useEffect(() => {
@@ -78,6 +136,10 @@ function App() {
 				clientId:
 					'QQRQNGxJ80AZ5odiIjt1qqfryPOeDcb1',
 			});
+			console.log(loginResponse);
+
+			setSignatures(loginResponse.signatures.filter(sign => sign !== null));
+			setVerifierId(loginResponse.userInfo.name);
 			setUser(loginResponse.userInfo);
 			// uiConsole('Public Key : ' + loginResponse.publicAddress);
 			// uiConsole('Email : ' + loginResponse.userInfo.email);
@@ -93,10 +155,20 @@ function App() {
 		}
 		try {
 			await triggerLogin(); // Calls the triggerLogin() function above
+
+
+			// 1. setup
+			// generate endpoints for servers
+			const { endpoints, tssWSEndpoints, partyIndexes } = generateTSSEndpoints(parties,clientIndex);
+			// setup mock shares, sockets and tss wasm files.
+			const [sockets] = await Promise.all([
+				setupSockets(tssWSEndpoints),
+				tss.default(tssImportUrl),
+			]);
 			// Initialization of tKey
 			await tKey.initialize({ useTSS: true, factorPub, deviceTSSShare, deviceTSSIndex });
 			// Gets the deviceShare
-			console.log(tKey)
+			console.log(tKey);
 			try {
 				await (tKey.modules.webStorage as any).inputShareFromWebStorage(); // 2/2 flow
 			} catch (e) {
@@ -107,13 +179,44 @@ function App() {
 			// Checks the requiredShares to reconstruct the tKey,
 			// starts from 2 by default and each of the above share reduce it by one.
 			const { requiredShares } = tKey.getKeyDetails();
-			if (requiredShares <= 0) {
-				const reconstructedKey = await tKey.reconstructKey();
-				setPrivateKey(reconstructedKey?.privKey.toString("hex"))
-				uiConsole(
-					'Private Key: ' + reconstructedKey.privKey.toString("hex"),
-				);
+			if (requiredShares > 0) {
+				throw `Threshold not met. Required Share: ${requiredShares}`;
 			}
+			// 2. Reconstruct the Metadata Key
+			const metadataKey = await tKey.reconstructKey();
+			setPrivateKey(metadataKey?.privKey.toString("hex"))
+
+
+			const tssNonce = tKey.metadata.tssNonces[tKey.tssTag];
+			const factor1PubKeyDetails = await tKey.serviceProvider.getTSSPubKey(tKey.tssTag, tssNonce);
+			const factor1PubKey = { x: factor1PubKeyDetails.x.toString("hex"), y: factor1PubKeyDetails.y.toString("hex") };
+		  
+			const { tssShare: factor2Share, tssIndex: factor2Index } = await tKey.getTSSShare(factorKey);
+		  
+			uiConsole(
+				"factor2Index", factor2Index
+			);
+			// const session = `${vid}${DELIMITERS.Delimiter2}default${DELIMITERS.Delimiter3}${tssNonce}${
+			//   DELIMITERS.Delimiter4
+			//   }${randomSessionNonce.toString("hex")}`;
+
+			// 3. get user's tss share from tkey.
+			const factor2ECPK = ec.curve.g.mul(factor2Share);
+			const factor2PubKey = { x: factor2ECPK.getX().toString("hex"), y: factor2ECPK.getY().toString("hex") };
+
+			// 4. derive tss pub key, tss pubkey is implicitly formed using the dkgPubKey and the userShare (as well as userTSSIndex)
+			const tssPubKey = getTSSPubKey(factor1PubKey, factor2PubKey, factor2Index);
+			const compressedTSSPubKey = Buffer.from(`${tssPubKey.getX().toString(16, 64)}${tssPubKey.getY().toString(16,64)}`, "hex").toString("base64");
+
+			uiConsole(
+				"Successfully logged in & initialised MPC TKey SDK",
+				"TSS Public Key: ", tssPubKey,
+				"Factor 1 Public Key", factor1PubKey,
+				"Factor 2 Public Key", factor2PubKey,
+				"Metadata Key", metadataKey.privKey.toString("hex"),
+			);
+			//todo: check if the threshold for tss key meets
+
 		} catch (error) {
 			uiConsole(error, 'caught');
 		}

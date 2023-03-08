@@ -1,6 +1,7 @@
 const webpack = require('webpack');
 const CopyPlugin = require("copy-webpack-plugin");
 const path = require("path");
+const HtmlWebpackPlugin = require('html-webpack-plugin');
 
 module.exports = function override(config) {
 	const fallback = config.resolve.fallback || {};
@@ -19,14 +20,6 @@ module.exports = function override(config) {
 			process: 'process/browser',
 			Buffer: ['buffer', 'Buffer'],
 		}),
-		new CopyPlugin({
-			patterns: [
-			  {
-				from: "src/dkls_19.wasm",
-				to: path.resolve(__dirname, "./dist/dkls_19.wasm"),
-			  },
-			],
-		  }),
 	]);
 	config.ignoreWarnings = [/Failed to parse source map/];
 	config.module.rules.push({
