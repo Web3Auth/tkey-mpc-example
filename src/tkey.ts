@@ -25,6 +25,7 @@ const securityQuestionsModule = new SecurityQuestionsModule();
 
 // Instantiation of tKey
 export const tKey = new ThresholdKey({
+  enableLogging: true,
   modules: {
     webStorage: webStorageModule,
     securityQuestions: securityQuestionsModule,

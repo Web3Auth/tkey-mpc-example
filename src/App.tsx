@@ -4,12 +4,21 @@ import swal from 'sweetalert';
 import {tKey} from "./tkey"
 import { EthereumPrivateKeyProvider } from "@web3auth/ethereum-provider";
 import Web3 from "web3";
+import { generatePrivate } from "eccrypto";
+import BN from "bn.js";
+import { getPubKeyPoint } from "@tkey/common-types";
+
+const factorKey = new BN(generatePrivate());
+const factorPub = getPubKeyPoint(factorKey);
+
+const deviceTSSShare = new BN(generatePrivate());
+const deviceTSSIndex = 2;
 
 function App() {
 	const [user, setUser] = useState<any>(null);
 	const [privateKey, setPrivateKey] = useState<any>();
 	const [provider, setProvider] = useState<any>();
-	const [tkeyObject] = useState<any>(tKey);
+	// const [tkeyObject] = useState<any>(tKey);
 
 	// Init Service Provider inside the useEffect Method
 	useEffect(() => {
@@ -85,8 +94,9 @@ function App() {
 		try {
 			await triggerLogin(); // Calls the triggerLogin() function above
 			// Initialization of tKey
-			await tKey.initialize(); // 1/2 flow
+			await tKey.initialize({ useTSS: true, factorPub, deviceTSSShare, deviceTSSIndex });
 			// Gets the deviceShare
+			console.log(tKey)
 			try {
 				await (tKey.modules.webStorage as any).inputShareFromWebStorage(); // 2/2 flow
 			} catch (e) {
