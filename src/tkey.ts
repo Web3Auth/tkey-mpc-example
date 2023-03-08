@@ -5,7 +5,6 @@ import SecurityQuestionsModule from "@tkey/security-questions";
 // Configuration of Service Provider
 const customAuthArgs = {
   baseUrl: `${window.location.origin}/serviceworker`,
-  network: "cyan", // based on the verifier network.
 };
 // Configuration of Modules
 const webStorageModule = new WebStorageModule();

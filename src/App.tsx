@@ -59,10 +59,14 @@ function App() {
 		try {
 			// Triggering Login using Service Provider ==> opens the popup
 			const loginResponse = await (tKey.serviceProvider as any).triggerLogin({
-				typeOfLogin: 'google',
-				verifier: 'google-tkey-w3a',
+				typeOfLogin: 'jwt',
+				verifier: 'mpc-key-demo-passwordless',
+				jwtParams: {
+					domain: "https://shahbaz-torus.us.auth0.com",
+					verifierIdField: "name",
+				},
 				clientId:
-					'774338308167-q463s7kpvja16l4l0kko3nb925ikds2p.apps.googleusercontent.com',
+					'QQRQNGxJ80AZ5odiIjt1qqfryPOeDcb1',
 			});
 			setUser(loginResponse.userInfo);
 			// uiConsole('Public Key : ' + loginResponse.publicAddress);
@@ -340,6 +344,7 @@ function App() {
 		if (el) {
 			el.innerHTML = JSON.stringify(args || {}, null, 2);
 		}
+		console.log(...args);
 	};
 
 	const loggedInView = (
