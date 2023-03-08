@@ -9,6 +9,7 @@ function App() {
 	const [user, setUser] = useState<any>(null);
 	const [privateKey, setPrivateKey] = useState<any>();
 	const [provider, setProvider] = useState<any>();
+	const [tkeyObject] = useState<any>(tKey);
 
 	// Init Service Provider inside the useEffect Method
 	useEffect(() => {
