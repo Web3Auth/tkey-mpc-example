@@ -34,7 +34,7 @@ const DELIMITERS = {
 
 const randomSessionNonce = keccak256(generatePrivate().toString("hex") + Date.now());
 
-const tssImportUrl = `${process.env.PUBLIC_URL}/dkls_19.wasm`;
+const tssImportUrl = `https://sapphire-dev-2-2.authnetwork.dev/tss/v1/clientWasm`;
 
 const setupSockets = async (tssWSEndpoints: string[]) => {
 	const sockets = await createSockets(tssWSEndpoints);
