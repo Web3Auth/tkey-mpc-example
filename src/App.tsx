@@ -5,7 +5,7 @@ import './App.css';
 import { Client } from "@toruslabs/tss-client";
 import * as tss from "@toruslabs/tss-lib";
 import swal from 'sweetalert';
-import {tKey} from "./tkey"
+import { tKey } from "./tkey"
 import { EthereumSigningProvider } from "@web3auth-mpc/ethereum-provider";
 import Web3 from "web3";
 import { generatePrivate } from "eccrypto";
@@ -33,8 +33,6 @@ const DELIMITERS = {
 	Delimiter4: "\u0017",
 };
 
-const randomSessionNonce = keccak256(generatePrivate().toString("hex") + Date.now());
-
 const tssImportUrl = `https://sapphire-dev-2-2.authnetwork.dev/tss/v1/clientWasm`;
 
 const setupSockets = async (tssWSEndpoints: string[]) => {
@@ -42,11 +40,11 @@ const setupSockets = async (tssWSEndpoints: string[]) => {
 	// wait for websockets to be connected
 	await new Promise((resolve) => {
 		const checkConnectionTimer = setInterval(() => {
-		for (let i = 0; i < sockets.length; i++) {
-			if (sockets[i] !== null && !sockets[i].connected) return;
-		}
-		clearInterval(checkConnectionTimer);
-		resolve(true);
+			for (let i = 0; i < sockets.length; i++) {
+				if (sockets[i] !== null && !sockets[i].connected) return;
+			}
+			clearInterval(checkConnectionTimer);
+			resolve(true);
 		}, 100);
 	});
 
@@ -57,15 +55,15 @@ const generateTSSEndpoints = (parties: number, clientIndex: number) => {
 	const endpoints: string[] = [];
 	const tssWSEndpoints: string[] = [];
 	const partyIndexes: number[] = [];
-	for (let i = 0; i < parties ; i++) {
-	  partyIndexes.push(i);
-	  if (i === clientIndex) {
-		endpoints.push(null as any);
-		tssWSEndpoints.push(null as any);
-	  } else {
-		endpoints.push(`https://sapphire-dev-2-${i+1}.authnetwork.dev/tss`);
-		tssWSEndpoints.push(`https://sapphire-dev-2-${i+1}.authnetwork.dev`);
-	  }
+	for (let i = 0; i < parties; i++) {
+		partyIndexes.push(i);
+		if (i === clientIndex) {
+			endpoints.push(null as any);
+			tssWSEndpoints.push(null as any);
+		} else {
+			endpoints.push(`https://sapphire-dev-2-${i + 1}.authnetwork.dev/tss`);
+			tssWSEndpoints.push(`https://sapphire-dev-2-${i + 1}.authnetwork.dev`);
+		}
 	}
 	return { endpoints, tssWSEndpoints, partyIndexes };
 };
@@ -75,10 +73,10 @@ function App() {
 	const [metadataKey, setMetadataKey] = useState<any>();
 	const [provider, setProvider] = useState<any>();
 	const [compressedTSSPubKey, setCompressedTSSPubKey] = useState<Buffer>(null);
-	const [sessionAuth, setSessionAuth] = useState<string>(null);
 	const [web3AuthSigs, setWeb3AuthSigs] = useState<string>(null);
-	const [f2Share, setf2Share ] = useState<BN>(null);
-	const [f2Index, setf2Index ] = useState<number>(null);
+	const [f2Share, setf2Share] = useState<BN>(null);
+	const [f2Index, setf2Index] = useState<number>(null);
+	const [sessionId, setSessionID] = useState<any>(null);
 
 	// Init Service Provider inside the useEffect Method
 	useEffect(() => {
@@ -87,80 +85,102 @@ function App() {
 			try {
 				await (tKey.serviceProvider as any).init();
 			} catch (error) {
-			  console.error(error);
+				console.error(error);
 			}
-		  };
-		  init();
-		const ethProvider = async() => {
-			const ethereumSigningProvider = new EthereumSigningProvider({
-			  config: {
+		};
+		init();
+	})
+	useEffect(() => {
+		const ethProvider = async () => {
+			try {
+				const ethereumSigningProvider = new EthereumSigningProvider({
+					config: {
+						/*
+						pass the chain config that you want to connect with
+						all chainConfig fields are required.
+						*/
+						chainConfig: {
+							chainId: "0x5",
+							rpcTarget: "https://rpc.ankr.com/eth_goerli",
+							displayName: "Goerli Testnet",
+							blockExplorer: "https://goerli.etherscan.io",
+							ticker: "ETH",
+							tickerName: "Ethereum",
+						},
+					},
+				});
 				/*
-				pass the chain config that you want to connect with
-				all chainConfig fields are required.
+				pass user's private key here.
+				after calling setupProvider, we can use
 				*/
-				chainConfig: {
-					chainId: "0x5",
-					rpcTarget: "https://rpc.ankr.com/eth_goerli",
-					displayName: "Goerli Testnet",
-					blockExplorer: "https://goerli.etherscan.io",
-					ticker: "ETH",
-					tickerName: "Ethereum",
-				},
-			  },
-			});
-			/*
-			pass user's private key here.
-			after calling setupProvider, we can use
-			*/
-			const sign = async (msgHash: Buffer) => {
-				// 1. setup
-				// generate endpoints for servers
-				const { endpoints, tssWSEndpoints, partyIndexes } = generateTSSEndpoints(parties,clientIndex);
-				// setup mock shares, sockets and tss wasm files.
-				const [sockets] = await Promise.all([
-					setupSockets(tssWSEndpoints),
-					tss.default(tssImportUrl),
-				]);
+				const sign = async (msgHash: Buffer) => {
+					// 1. setup
+					// generate endpoints for servers
+					const { endpoints, tssWSEndpoints, partyIndexes } = generateTSSEndpoints(parties, clientIndex);
+					// setup mock shares, sockets and tss wasm files.
+					const [sockets] = await Promise.all([
+						setupSockets(tssWSEndpoints),
+						tss.default(tssImportUrl),
+					]);
 
-				const participatingServerDKGIndexes = [1, 2, 3];
-				const dklsCoeff = getDKLSCoeff(true, participatingServerDKGIndexes, f2Index);
-				const denormalisedShare = dklsCoeff.mul(f2Share).umod(ec.curve.n);
-				const share = Buffer.from(denormalisedShare.toString(16, 64), "hex").toString("base64");
-	
-				if (!sessionAuth) {
-					throw `sessionAuth does not exist ${sessionAuth}`
-				}
-				if (!web3AuthSigs) {
-					throw `Signature does not exist ${web3AuthSigs}`
+					const randomSessionNonce = keccak256(generatePrivate().toString("hex") + Date.now());
+
+					// session is needed for authentication to the web3auth infrastructure holding the factor 1
+					const currentSession = `${sessionId}${randomSessionNonce.toString("hex")}`;
+
+					const participatingServerDKGIndexes = [1, 2, 3];
+					const dklsCoeff = getDKLSCoeff(true, participatingServerDKGIndexes, f2Index);
+					const denormalisedShare = dklsCoeff.mul(f2Share).umod(ec.curve.n);
+					const share = Buffer.from(denormalisedShare.toString(16, 64), "hex").toString("base64");
+
+					if (!currentSession) {
+						throw `sessionAuth does not exist ${currentSession}`
+					}
+					if (!web3AuthSigs) {
+						throw `Signature does not exist ${web3AuthSigs}`
+					}
+
+					const client = new Client(
+						currentSession,
+						clientIndex,
+						partyIndexes,
+						endpoints,
+						sockets,
+						share,
+						compressedTSSPubKey.toString("base64"),
+						true,
+						tssImportUrl
+					);
+					const serverCoeffs = {};
+					for (let i = 0; i < participatingServerDKGIndexes.length; i++) {
+						const serverIndex = participatingServerDKGIndexes[i];
+						serverCoeffs[serverIndex] = getDKLSCoeff(false, participatingServerDKGIndexes, f2Index, serverIndex).toString("hex");
+					}
+					client.precompute(tss, { signatures: web3AuthSigs, server_coeffs: serverCoeffs });
+					await client.ready();
+					const { r, s, recoveryParam } = await client.sign(tss as any, Buffer.from(msgHash).toString("base64"), true, "", "keccak256", { signatures: web3AuthSigs });
+					await client.cleanup(tss, { signatures: web3AuthSigs, server_coeffs: serverCoeffs });
+					return { v: recoveryParam + 27, r: Buffer.from(r.toString("hex"), "hex"), s: Buffer.from(s.toString("hex"), "hex") };
+				};
+
+				if (!compressedTSSPubKey) {
+					throw `compressedTSSPubKey does not exist ${compressedTSSPubKey}`
 				}
 
-				const client = new Client(sessionAuth, clientIndex, partyIndexes, endpoints, sockets, share, compressedTSSPubKey.toString("base64"), true, tssImportUrl);
-				const serverCoeffs = {};
-				for (let i = 0; i < participatingServerDKGIndexes.length; i++) {
-					const serverIndex = participatingServerDKGIndexes[i];
-					serverCoeffs[serverIndex] = getDKLSCoeff(false, participatingServerDKGIndexes, f2Index, serverIndex).toString("hex");
+				const getPublic: () => Promise<Buffer> = async () => {
+					return compressedTSSPubKey;
 				}
-				console.log(tKey);
-				client.precompute(tss, { signatures: web3AuthSigs, server_coeffs: serverCoeffs });
-				await client.ready();
-				const { r, s, recoveryParam } = await client.sign(tss as any, Buffer.from(msgHash).toString("base64"), true, "", "keccak256", { signatures: web3AuthSigs });
-				return { v: recoveryParam + 27, r: Buffer.from(r.toString("hex"), "hex"), s: Buffer.from(s.toString("hex"), "hex") };
-			};
 
-			if (!compressedTSSPubKey) {
-				throw `compressedTSSPubKey does not exist ${compressedTSSPubKey}`
+				await ethereumSigningProvider.setupProvider({ sign, getPublic });
+				console.log(ethereumSigningProvider.provider);
+				setProvider(ethereumSigningProvider.provider);
 			}
-
-			const getPublic: () => Promise<Buffer> = async () => {
-				return compressedTSSPubKey;
+			catch (e) {
+				console.error(e);
 			}
-			
-			await ethereumSigningProvider.setupProvider({ sign, getPublic });
-			console.log(ethereumSigningProvider.provider);
-			setProvider(ethereumSigningProvider.provider);
-		  }
+		}
 		ethProvider();
-	}, [compressedTSSPubKey, sessionAuth, web3AuthSigs]);
+	}, [compressedTSSPubKey, web3AuthSigs]);
 
 	const triggerLogin = async () => {
 		if (!tKey) {
@@ -199,7 +219,7 @@ function App() {
 			const verifier = "torus-test-health";
 			const verifierId = "test80@example.com";
 			const { signatures, postboxkey } = await fetchPostboxKeyAndSigs({ verifierName: verifier, verifierId: verifierId });
-			tKey.serviceProvider.postboxKey = new BN(postboxkey, "hex");;
+			tKey.serviceProvider.postboxKey = new BN(postboxkey, "hex");
 			(tKey.serviceProvider as TorusServiceProvider).verifierName = verifier;
 			(tKey.serviceProvider as TorusServiceProvider).verifierId = verifierId;
 			let loginResponse = {
@@ -217,17 +237,17 @@ function App() {
 	};
 
 
-	const initializeNewKey = async (mockLogin:boolean) => {
+	const initializeNewKey = async (mockLogin: boolean) => {
 		if (!tKey) {
 			uiConsole("tKey not initialized yet");
 			return;
 		}
 		try {
 			let loginResponse, verifier;
-			if (mockLogin){
+			if (mockLogin) {
 				loginResponse = await triggerMockLogin();
 				verifier = "torus-test-health";;
-			} else { 
+			} else {
 				loginResponse = await triggerLogin(); // Calls the triggerLogin() function above
 				verifier = "mpc-key-demo-passwordless"
 			}
@@ -259,9 +279,9 @@ function App() {
 			const tssNonce = tKey.metadata.tssNonces[tKey.tssTag];
 			const factor1PubKeyDetails = await tKey.serviceProvider.getTSSPubKey(tKey.tssTag, tssNonce);
 			const factor1PubKey = { x: factor1PubKeyDetails.x.toString("hex"), y: factor1PubKeyDetails.y.toString("hex") };
-		  
+
 			const { tssShare: factor2Share, tssIndex: factor2Index } = await tKey.getTSSShare(factorKey);
-		  
+
 			uiConsole(
 				"factor2Index", factor2Index
 			);
@@ -272,27 +292,18 @@ function App() {
 
 			// 4. derive tss pub key, tss pubkey is implicitly formed using the dkgPubKey and the userShare (as well as userTSSIndex)
 			const tssPubKey = getTSSPubKey(factor1PubKey, factor2PubKey, factor2Index);
-			const compressedTSSPubKey = Buffer.from(`${tssPubKey.getX().toString(16, 64)}${tssPubKey.getY().toString(16,64)}`, "hex");
-	
-		
-
-			// session is needed for authentication to the web3auth infrastructure holding the factor 1
+			const compressedTSSPubKey = Buffer.from(`${tssPubKey.getX().toString(16, 64)}${tssPubKey.getY().toString(16, 64)}`, "hex");
 			const vid = `${verifier}${DELIMITERS.Delimiter1}${verifierId}`;
-			const currentSession = `${vid}${DELIMITERS.Delimiter2}default${DELIMITERS.Delimiter3}${tssNonce}${
-				DELIMITERS.Delimiter4
-				}${randomSessionNonce.toString("hex")}`;
-				
+			setSessionID(`${vid}${DELIMITERS.Delimiter2}default${DELIMITERS.Delimiter3}${tssNonce}${DELIMITERS.Delimiter4}`);
 			setf2Share(factor2Share);
 			setf2Index(factor2Index);
 			setCompressedTSSPubKey(compressedTSSPubKey);
 			setWeb3AuthSigs(signatures);
-			setSessionAuth(currentSession);
 			console.log("PRINTS HERE");
 			console.log(factor2Share);
 			console.log(factor2Index);
 			console.log(compressedTSSPubKey);
 			console.log(signatures);
-			console.log(currentSession);
 
 			uiConsole(
 				"Successfully logged in & initialised MPC TKey SDK",
@@ -300,7 +311,6 @@ function App() {
 				"Factor 1 Public Key", factor1PubKey,
 				"Factor 2 Public Key", factor2PubKey,
 				"Metadata Key", metadataKey.privKey.toString("hex"),
-				"Current Session", currentSession,
 			);
 
 		} catch (error) {
@@ -382,12 +392,12 @@ function App() {
 				await tKey.inputShare(value, "mnemonic"); // 2/2 flow
 				// const { requiredShares } = tKey.getKeyDetails();
 				// if (requiredShares <= 0) {
-					const reconstructedKey = await tKey.reconstructKey();
-					console.log(reconstructedKey)
-					uiConsole(
-						'Private Key: ' + reconstructedKey.privKey.toString("hex"),
-						);
-						setMetadataKey(reconstructedKey?.privKey.toString("hex"))
+				const reconstructedKey = await tKey.reconstructKey();
+				console.log(reconstructedKey)
+				uiConsole(
+					'Private Key: ' + reconstructedKey.privKey.toString("hex"),
+				);
+				setMetadataKey(reconstructedKey?.privKey.toString("hex"))
 				// }
 			} catch (error) {
 				uiConsole(error);
@@ -457,7 +467,7 @@ function App() {
 		return metadataKey;
 	};
 
-	const getChainID = async() => {
+	const getChainID = async () => {
 		if (!provider) {
 			console.log("provider not initialized yet");
 			return;
@@ -468,7 +478,7 @@ function App() {
 		return chainId;
 	}
 
-	const getAccounts = async() => {
+	const getAccounts = async () => {
 		if (!provider) {
 			console.log("provider not initialized yet");
 			return;
@@ -479,7 +489,7 @@ function App() {
 		return address;
 	}
 
-	const getBalance = async() => {
+	const getBalance = async () => {
 		if (!provider) {
 			console.log("provider not initialized yet");
 			return;
@@ -488,12 +498,12 @@ function App() {
 		const address = (await web3.eth.getAccounts())[0];
 		const balance = web3.utils.fromWei(
 			await web3.eth.getBalance(address) // Balance is in wei
-		  );
+		);
 		uiConsole(balance)
 		return balance;
 	}
 
-	const signMessage = async(): Promise<any> => {
+	const signMessage = async (): Promise<any> => {
 		if (!provider) {
 			console.log("provider not initialized yet");
 			return;
@@ -502,14 +512,14 @@ function App() {
 		const fromAddress = (await web3.eth.getAccounts())[0];
 		const originalMessage = [
 			{
-			  type: "string",
-			  name: "fullName",
-			  value: "Satoshi Nakamoto",
+				type: "string",
+				name: "fullName",
+				value: "Satoshi Nakamoto",
 			},
 			{
-			  type: "uint32",
-			  name: "userId",
-			  value: "1212",
+				type: "uint32",
+				name: "userId",
+				value: "1212",
 			},
 		];
 		const params = [originalMessage, fromAddress];
@@ -523,7 +533,7 @@ function App() {
 		uiConsole(signedMessage)
 	}
 
-	const sendTransaction = async() => {
+	const sendTransaction = async () => {
 		if (!provider) {
 			console.log("provider not initialized yet");
 			return;
@@ -606,7 +616,7 @@ function App() {
 						Get Balance
 					</button>
 				</div>
-				
+
 				<div>
 					<button onClick={signMessage} className='card'>
 						Sign Message
@@ -633,7 +643,7 @@ function App() {
 	const unloggedInView = (
 		<div>
 			<button onClick={() => initializeNewKey(false)} className='card'>
-			Login
+				Login
 			</button>
 			<button onClick={() => initializeNewKey(true)} className='card'>
 				MockLogin
