@@ -74,9 +74,7 @@ function App() {
 	const [user, setUser] = useState<any>(null);
 	const [metadataKey, setMetadataKey] = useState<any>();
 	const [provider, setProvider] = useState<any>();
-	const [client, setClient] = useState<Client>(null);
 	const [compressedTSSPubKey, setCompressedTSSPubKey] = useState<Buffer>(null);
-	const [tssLib, setTssLib] = useState<any>(null);
 	const [sessionAuth, setSessionAuth] = useState<string>(null);
 	const [web3AuthSigs, setWeb3AuthSigs] = useState<string>(null);
 	const [f2Share, setf2Share ] = useState<BN>(null);
@@ -115,7 +113,7 @@ function App() {
 			after calling setupProvider, we can use
 			*/
 			const sign = async (msgHash: Buffer) => {
-
+				debugger
 				// 1. setup
 				// generate endpoints for servers
 				const { endpoints, tssWSEndpoints, partyIndexes } = generateTSSEndpoints(parties,clientIndex);
@@ -131,6 +129,9 @@ function App() {
 				const share = Buffer.from(denormalisedShare.toString(16, 64), "hex").toString("base64");
 	
 				debugger;
+				if (sessionAuth!) {
+					throw `sessionAuth does not exist ${sessionAuth}`
+				}
 				const client = new Client(sessionAuth, clientIndex, partyIndexes, endpoints, sockets, share, compressedTSSPubKey.toString("base64"), true, tssImportUrl);
 				debugger;
 				const serverCoeffs = {};
@@ -167,6 +168,7 @@ function App() {
 			};
 
 			const getPublic: () => Promise<Buffer> = async () => {
+				debugger
 				return compressedTSSPubKey;
 			}
 			
@@ -307,13 +309,20 @@ function App() {
 			const currentSession = `${vid}${DELIMITERS.Delimiter2}default${DELIMITERS.Delimiter3}${tssNonce}${
 				DELIMITERS.Delimiter4
 				}${randomSessionNonce.toString("hex")}`;
-
+				
 			setf2Share(factor2Share);
 			setf2Index(factor2Index);
 			setCompressedTSSPubKey(compressedTSSPubKey);
 			setWeb3AuthSigs(signatures);
-			setSessionAuth(sessionAuth);
+			setSessionAuth(currentSession);
+			console.log("PRINTS HERE");
+			console.log(factor2Share);
+			console.log(factor2Index);
+			console.log(compressedTSSPubKey);
+			console.log(signatures);
+			console.log(currentSession);
 
+			debugger;
 			uiConsole(
 				"Successfully logged in & initialised MPC TKey SDK",
 				"TSS Public Key: ", tssPubKey,
@@ -548,6 +557,7 @@ function App() {
 			console.log("provider not initialized yet");
 			return;
 		}
+		debugger
 		const web3 = new Web3(provider);
 		const fromAddress = (await web3.eth.getAccounts())[0];
 		const originalMessage = [
