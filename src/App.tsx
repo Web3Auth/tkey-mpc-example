@@ -1,10 +1,12 @@
+/* eslint-disable no-throw-literal */
+/* eslint-disable react-hooks/exhaustive-deps */
 import React, { useEffect, useState } from 'react';
 import './App.css';
 import { Client } from "@toruslabs/tss-client";
 import * as tss from "@toruslabs/tss-lib";
 import swal from 'sweetalert';
 import {tKey} from "./tkey"
-import { EthereumPrivateKeyProvider } from "@web3auth/ethereum-provider";
+import { EthereumSigningProvider } from "@web3auth-mpc/ethereum-provider";
 import Web3 from "web3";
 import { generatePrivate } from "eccrypto";
 import BN from "bn.js";
@@ -33,6 +35,7 @@ const DELIMITERS = {
 const randomSessionNonce = keccak256(generatePrivate().toString("hex") + Date.now());
 
 const tssImportUrl = `${process.env.PUBLIC_URL}/dkls_19.wasm`;
+
 const setupSockets = async (tssWSEndpoints: string[]) => {
 	const sockets = await createSockets(tssWSEndpoints);
 	// wait for websockets to be connected
@@ -66,17 +69,12 @@ const generateTSSEndpoints = (parties: number, clientIndex: number) => {
 	return { endpoints, tssWSEndpoints, partyIndexes };
 };
 
-
-
 function App() {
 	const [user, setUser] = useState<any>(null);
-	const [privateKey, setPrivateKey] = useState<any>();
+	const [metadataKey, setMetadataKey] = useState<any>();
 	const [provider, setProvider] = useState<any>();
-	const [tkeyObject] = useState<any>(tKey);
-	const [signatures, setSignatures] = useState<any>(null);
-	const [verifierId, setVerifierId] = useState<any>(null);
-
-	const vid = `mpc-key-demo-passwordless${DELIMITERS.Delimiter1}${verifierId}`;
+	const [client, setClient] = useState<any>(null);
+	const [compressedTSSPubKey, setCompressedTSSPubKey] = useState<any>(null);
 
 	// Init Service Provider inside the useEffect Method
 	useEffect(() => {
@@ -90,7 +88,7 @@ function App() {
 		  };
 		  init();
 		const ethProvider = async() => {
-			const ethereumPrivateKeyProvider = new EthereumPrivateKeyProvider({
+			const ethereumSigningProvider = new EthereumSigningProvider({
 			  config: {
 				/*
 				pass the chain config that you want to connect with
@@ -110,14 +108,30 @@ function App() {
 			pass user's private key here.
 			after calling setupProvider, we can use
 			*/
-			if(privateKey){
-				await ethereumPrivateKeyProvider.setupProvider(privateKey);
-				console.log(ethereumPrivateKeyProvider.provider);
-				setProvider(ethereumPrivateKeyProvider.provider);
+			if(client) {
+				const sign = async (msgHash: Buffer) => {
+					  if (!client.allocated) {
+						client.allocated = true;
+						await client.client;
+						await tss.default(tssImportUrl);
+						const { r, s, recoveryParam } = await client.client.sign(tss as any, Buffer.from(msgHash).toString("base64"), true, "", "keccak256");
+						return { v: recoveryParam + 27, r: Buffer.from(r.toString("hex"), "hex"), s: Buffer.from(s.toString("hex"), "hex") };
+					  }
+					throw new Error("no available clients, please generate precomputes first");
+				};
+
+				const getPublic: () => Promise<Buffer> = async () => {
+					return compressedTSSPubKey;
+				}
+				
+				await ethereumSigningProvider.setupProvider({ sign, getPublic });
+				console.log(ethereumSigningProvider.provider);
+				debugger;
+				setProvider(ethereumSigningProvider.provider);
 			}
 		  }
 		ethProvider();
-	}, [privateKey]);
+	}, [client]);
 
 	const triggerLogin = async () => {
 		if (!tKey) {
@@ -137,10 +151,8 @@ function App() {
 					'QQRQNGxJ80AZ5odiIjt1qqfryPOeDcb1',
 			});
 			console.log(loginResponse);
-
-			setSignatures(loginResponse.signatures.filter(sign => sign !== null));
-			setVerifierId(loginResponse.userInfo.name);
 			setUser(loginResponse.userInfo);
+			return loginResponse;
 			// uiConsole('Public Key : ' + loginResponse.publicAddress);
 			// uiConsole('Email : ' + loginResponse.userInfo.email);
 		} catch (error) {
@@ -154,9 +166,9 @@ function App() {
 			return;
 		}
 		try {
-			await triggerLogin(); // Calls the triggerLogin() function above
-
-
+			const loginResponse = await triggerLogin(); // Calls the triggerLogin() function above
+			const signatures = loginResponse.signatures.filter(sign => sign !== null);
+			const verifierId = loginResponse.userInfo.name;
 			// 1. setup
 			// generate endpoints for servers
 			const { endpoints, tssWSEndpoints, partyIndexes } = generateTSSEndpoints(parties,clientIndex);
@@ -184,7 +196,7 @@ function App() {
 			}
 			// 2. Reconstruct the Metadata Key
 			const metadataKey = await tKey.reconstructKey();
-			setPrivateKey(metadataKey?.privKey.toString("hex"))
+			setMetadataKey(metadataKey?.privKey.toString("hex"))
 
 
 			const tssNonce = tKey.metadata.tssNonces[tKey.tssTag];
@@ -196,9 +208,6 @@ function App() {
 			uiConsole(
 				"factor2Index", factor2Index
 			);
-			// const session = `${vid}${DELIMITERS.Delimiter2}default${DELIMITERS.Delimiter3}${tssNonce}${
-			//   DELIMITERS.Delimiter4
-			//   }${randomSessionNonce.toString("hex")}`;
 
 			// 3. get user's tss share from tkey.
 			const factor2ECPK = ec.curve.g.mul(factor2Share);
@@ -207,7 +216,7 @@ function App() {
 			// 4. derive tss pub key, tss pubkey is implicitly formed using the dkgPubKey and the userShare (as well as userTSSIndex)
 			const tssPubKey = getTSSPubKey(factor1PubKey, factor2PubKey, factor2Index);
 			const compressedTSSPubKey = Buffer.from(`${tssPubKey.getX().toString(16, 64)}${tssPubKey.getY().toString(16,64)}`, "hex").toString("base64");
-
+			setCompressedTSSPubKey(compressedTSSPubKey);
 			uiConsole(
 				"Successfully logged in & initialised MPC TKey SDK",
 				"TSS Public Key: ", tssPubKey,
@@ -215,7 +224,29 @@ function App() {
 				"Factor 2 Public Key", factor2PubKey,
 				"Metadata Key", metadataKey.privKey.toString("hex"),
 			);
-			//todo: check if the threshold for tss key meets
+
+			// session is needed for authentication to the web3auth infrastructure holding the factor 1
+			const vid = `mpc-key-demo-passwordless${DELIMITERS.Delimiter1}${verifierId}`;
+			const currentSession = `${vid}${DELIMITERS.Delimiter2}default${DELIMITERS.Delimiter3}${tssNonce}${
+				DELIMITERS.Delimiter4
+				}${randomSessionNonce.toString("hex")}`;
+
+			const participatingServerDKGIndexes = [1, 2, 3];
+			const dklsCoeff = getDKLSCoeff(true, participatingServerDKGIndexes, factor2Index);
+			const denormalisedShare = dklsCoeff.mul(factor2Share).umod(ec.curve.n);
+			const share = Buffer.from(denormalisedShare.toString(16, 64), "hex").toString("base64");
+
+			const client = new Client(currentSession, clientIndex, partyIndexes, endpoints, sockets, share, compressedTSSPubKey, true, tssImportUrl);
+
+			const serverCoeffs = {};
+			for (let i = 0; i < participatingServerDKGIndexes.length; i++) {
+				const serverIndex = participatingServerDKGIndexes[i];
+				serverCoeffs[serverIndex] = getDKLSCoeff(false, participatingServerDKGIndexes, factor2Index, serverIndex).toString("hex");
+			}
+			console.log(tKey);
+			client.precompute(tss, { signatures, server_coeffs: serverCoeffs });
+			await client.ready();
+			setClient(client);
 
 		} catch (error) {
 			uiConsole(error, 'caught');
@@ -301,7 +332,7 @@ function App() {
 					uiConsole(
 						'Private Key: ' + reconstructedKey.privKey.toString("hex"),
 						);
-						setPrivateKey(reconstructedKey?.privKey.toString("hex"))
+						setMetadataKey(reconstructedKey?.privKey.toString("hex"))
 				// }
 			} catch (error) {
 				uiConsole(error);
@@ -324,7 +355,7 @@ function App() {
 					const { requiredShares } = tKey.getKeyDetails();
 					if (requiredShares <= 0) {
 						const reconstructedKey = await tKey.reconstructKey();
-						setPrivateKey(reconstructedKey?.privKey.toString("hex"))
+						setMetadataKey(reconstructedKey?.privKey.toString("hex"))
 						uiConsole(
 							'Private Key: ' + reconstructedKey.privKey.toString("hex"),
 						);
@@ -365,7 +396,7 @@ function App() {
 	};
 
 	const getPrivateKey = (): void => {
-		uiConsole(privateKey);
+		uiConsole(metadataKey);
 	};
 
 	const getChainID = async() => {
