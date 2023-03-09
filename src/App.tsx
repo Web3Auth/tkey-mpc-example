@@ -113,7 +113,6 @@ function App() {
 			after calling setupProvider, we can use
 			*/
 			const sign = async (msgHash: Buffer) => {
-				debugger
 				// 1. setup
 				// generate endpoints for servers
 				const { endpoints, tssWSEndpoints, partyIndexes } = generateTSSEndpoints(parties,clientIndex);
@@ -128,12 +127,10 @@ function App() {
 				const denormalisedShare = dklsCoeff.mul(f2Share).umod(ec.curve.n);
 				const share = Buffer.from(denormalisedShare.toString(16, 64), "hex").toString("base64");
 	
-				debugger;
 				if (sessionAuth!) {
 					throw `sessionAuth does not exist ${sessionAuth}`
 				}
 				const client = new Client(sessionAuth, clientIndex, partyIndexes, endpoints, sockets, share, compressedTSSPubKey.toString("base64"), true, tssImportUrl);
-				debugger;
 				const serverCoeffs = {};
 				for (let i = 0; i < participatingServerDKGIndexes.length; i++) {
 					const serverIndex = participatingServerDKGIndexes[i];
@@ -160,15 +157,13 @@ function App() {
 				// console.log(`precompute time: ${client._endPrecomputeTime - client._startPrecomputeTime}`);
 				// console.log(`signing time: ${client._endSignTime - client._startSignTime}`);
 				// await client.cleanup(tss, { signatures });
-				debugger;
 				// await tss.default(tssImportUrl);
-				const { r, s, recoveryParam } = await client.sign(tssLib as any, Buffer.from(msgHash).toString("base64"), true, "", "keccak256");
+				const { r, s, recoveryParam } = await client.sign(tss as any, Buffer.from(msgHash).toString("base64"), true, "", "keccak256");
 				return { v: recoveryParam + 27, r: Buffer.from(r.toString("hex"), "hex"), s: Buffer.from(s.toString("hex"), "hex") };
 				throw new Error("no available clients, please generate precomputes first");
 			};
 
 			const getPublic: () => Promise<Buffer> = async () => {
-				debugger
 				return compressedTSSPubKey;
 			}
 			
@@ -177,7 +172,7 @@ function App() {
 			setProvider(ethereumSigningProvider.provider);
 		  }
 		ethProvider();
-	}, [client]);
+	}, [compressedTSSPubKey]);
 
 	const triggerLogin = async () => {
 		if (!tKey) {
@@ -213,17 +208,6 @@ function App() {
 			return;
 		}
 		try {
-			// Triggering Login using Service Provider ==> opens the popup
-			// const loginResponse = await (tKey.serviceProvider as any).triggerLogin({
-			// 	typeOfLogin: 'jwt',
-			// 	verifier: 'mpc-key-demo-passwordless',
-			// 	jwtParams: {
-			// 		domain: "https://shahbaz-torus.us.auth0.com",
-			// 		verifierIdField: "name",
-			// 	},
-			// 	clientId:
-			// 		'QQRQNGxJ80AZ5odiIjt1qqfryPOeDcb1',
-			// });
 			const verifier = "torus-test-health";
 			const verifierId = "test80@example.com";
 			const { signatures, postboxkey } = await fetchPostboxKeyAndSigs({ verifierName: verifier, verifierId: verifierId });
@@ -322,7 +306,6 @@ function App() {
 			console.log(signatures);
 			console.log(currentSession);
 
-			debugger;
 			uiConsole(
 				"Successfully logged in & initialised MPC TKey SDK",
 				"TSS Public Key: ", tssPubKey,
@@ -504,6 +487,7 @@ function App() {
 		}
 		const keyDetails = await tKey.getKeyDetails();
 		uiConsole(keyDetails);
+		return keyDetails;
 	};
 
 	const logout = (): void => {
@@ -513,10 +497,12 @@ function App() {
 
 	const getUserInfo = (): void => {
 		uiConsole(user);
+		return user;
 	};
 
-	const getPrivateKey = (): void => {
+	const getMetadataKey = (): void => {
 		uiConsole(metadataKey);
+		return metadataKey;
 	};
 
 	const getChainID = async() => {
@@ -527,6 +513,7 @@ function App() {
 		const web3 = new Web3(provider);
 		const chainId = await web3.eth.getChainId();
 		uiConsole(chainId)
+		return chainId;
 	}
 
 	const getAccounts = async() => {
@@ -537,6 +524,7 @@ function App() {
 		const web3 = new Web3(provider);
 		const address = (await web3.eth.getAccounts())[0];
 		uiConsole(address)
+		return address;
 	}
 
 	const getBalance = async() => {
@@ -550,6 +538,7 @@ function App() {
 			await web3.eth.getBalance(address) // Balance is in wei
 		  );
 		uiConsole(balance)
+		return balance;
 	}
 
 	const signMessage = async(): Promise<any> => {
@@ -557,7 +546,6 @@ function App() {
 			console.log("provider not initialized yet");
 			return;
 		}
-		debugger
 		const web3 = new Web3(provider);
 		const fromAddress = (await web3.eth.getAccounts())[0];
 		const originalMessage = [
@@ -647,8 +635,8 @@ function App() {
 					</button>
 				</div>
 				<div>
-					<button onClick={getPrivateKey} className='card'>
-						Private Key
+					<button onClick={getMetadataKey} className='card'>
+						Metadata Key
 					</button>
 				</div>
 				<div>
