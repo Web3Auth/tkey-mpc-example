@@ -127,9 +127,13 @@ function App() {
 				const denormalisedShare = dklsCoeff.mul(f2Share).umod(ec.curve.n);
 				const share = Buffer.from(denormalisedShare.toString(16, 64), "hex").toString("base64");
 	
-				if (sessionAuth!) {
+				if (!sessionAuth) {
 					throw `sessionAuth does not exist ${sessionAuth}`
 				}
+				if (!web3AuthSigs) {
+					throw `Signature does not exist ${web3AuthSigs}`
+				}
+
 				const client = new Client(sessionAuth, clientIndex, partyIndexes, endpoints, sockets, share, compressedTSSPubKey.toString("base64"), true, tssImportUrl);
 				const serverCoeffs = {};
 				for (let i = 0; i < participatingServerDKGIndexes.length; i++) {
@@ -137,31 +141,15 @@ function App() {
 					serverCoeffs[serverIndex] = getDKLSCoeff(false, participatingServerDKGIndexes, f2Index, serverIndex).toString("hex");
 				}
 				console.log(tKey);
-				client.precompute(tss, { web3AuthSigs, server_coeffs: serverCoeffs });
+				client.precompute(tss, { signatures: web3AuthSigs, server_coeffs: serverCoeffs });
 				await client.ready();
-				// const msg = "hello world";
-				// const msgHash = keccak256(msg);
-				//  // initiate signature.
-				// const signature = await client.sign(tss, msgHash.toString("base64"), true, msg, "keccak256", { signatures });
-
-				// const hexToDecimal = (x) => ec.keyFromPrivate(x, "hex").getPrivate().toString(10);
-				// const pubk = ec.recoverPubKey(hexToDecimal(msgHash), signature, signature.recoveryParam, "hex");
-
-				// console.log(`tsspubkey, ${JSON.stringify(tssPubKey)}`);
-				// console.log(`msgHash: 0x${msgHash.toString("hex")}`);
-				// console.log(`signature: 0x${signature.r.toString(16, 64)}${signature.s.toString(16, 64)}${new BN(27 + signature.recoveryParam).toString(16)}`);
-				// // console.log(`address: 0x${Buffer.from(privateToAddress(`0x${privKey.toString(16, 64)}`)).toString("hex")}`);
-				// const passed = ec.verify(msgHash, signature, pubk);
-
-				// console.log(`passed: ${passed}`);
-				// console.log(`precompute time: ${client._endPrecomputeTime - client._startPrecomputeTime}`);
-				// console.log(`signing time: ${client._endSignTime - client._startSignTime}`);
-				// await client.cleanup(tss, { signatures });
-				// await tss.default(tssImportUrl);
-				const { r, s, recoveryParam } = await client.sign(tss as any, Buffer.from(msgHash).toString("base64"), true, "", "keccak256");
+				const { r, s, recoveryParam } = await client.sign(tss as any, Buffer.from(msgHash).toString("base64"), true, "", "keccak256", { signatures: web3AuthSigs });
 				return { v: recoveryParam + 27, r: Buffer.from(r.toString("hex"), "hex"), s: Buffer.from(s.toString("hex"), "hex") };
-				throw new Error("no available clients, please generate precomputes first");
 			};
+
+			if (!compressedTSSPubKey) {
+				throw `compressedTSSPubKey does not exist ${compressedTSSPubKey}`
+			}
 
 			const getPublic: () => Promise<Buffer> = async () => {
 				return compressedTSSPubKey;
@@ -172,7 +160,7 @@ function App() {
 			setProvider(ethereumSigningProvider.provider);
 		  }
 		ethProvider();
-	}, [compressedTSSPubKey]);
+	}, [compressedTSSPubKey, sessionAuth, web3AuthSigs]);
 
 	const triggerLogin = async () => {
 		if (!tKey) {
@@ -312,44 +300,8 @@ function App() {
 				"Factor 1 Public Key", factor1PubKey,
 				"Factor 2 Public Key", factor2PubKey,
 				"Metadata Key", metadataKey.privKey.toString("hex"),
+				"Current Session", currentSession,
 			);
-
-			// const participatingServerDKGIndexes = [1, 2, 3];
-			// const dklsCoeff = getDKLSCoeff(true, participatingServerDKGIndexes, factor2Index);
-			// const denormalisedShare = dklsCoeff.mul(factor2Share).umod(ec.curve.n);
-			// const share = Buffer.from(denormalisedShare.toString(16, 64), "hex").toString("base64");
-
-			// const client = new Client(currentSession, clientIndex, partyIndexes, endpoints, sockets, share, compressedTSSPubKey.toString("base64"), true, tssImportUrl);
-
-			// const serverCoeffs = {};
-			// for (let i = 0; i < participatingServerDKGIndexes.length; i++) {
-			// 	const serverIndex = participatingServerDKGIndexes[i];
-			// 	serverCoeffs[serverIndex] = getDKLSCoeff(false, participatingServerDKGIndexes, factor2Index, serverIndex).toString("hex");
-			// }
-			// console.log(tKey);
-			// client.precompute(tss, { signatures, server_coeffs: serverCoeffs });
-			// await client.ready();
-			// setTssLib(tss);
-			// setClient(client);
-
-			// const msg = "hello world";
-			// const msgHash = keccak256(msg);
-			//  // initiate signature.
-			// const signature = await client.sign(tss, msgHash.toString("base64"), true, msg, "keccak256", { signatures });
-
-			// const hexToDecimal = (x) => ec.keyFromPrivate(x, "hex").getPrivate().toString(10);
-			// const pubk = ec.recoverPubKey(hexToDecimal(msgHash), signature, signature.recoveryParam, "hex");
-
-			// console.log(`tsspubkey, ${JSON.stringify(tssPubKey)}`);
-			// console.log(`msgHash: 0x${msgHash.toString("hex")}`);
-			// console.log(`signature: 0x${signature.r.toString(16, 64)}${signature.s.toString(16, 64)}${new BN(27 + signature.recoveryParam).toString(16)}`);
-			// // console.log(`address: 0x${Buffer.from(privateToAddress(`0x${privKey.toString(16, 64)}`)).toString("hex")}`);
-			// const passed = ec.verify(msgHash, signature, pubk);
-
-			// console.log(`passed: ${passed}`);
-			// console.log(`precompute time: ${client._endPrecomputeTime - client._startPrecomputeTime}`);
-			// console.log(`signing time: ${client._endSignTime - client._startSignTime}`);
-			// await client.cleanup(tss, { signatures });
 
 		} catch (error) {
 			uiConsole(error, 'caught');
