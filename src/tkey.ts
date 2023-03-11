@@ -1,8 +1,8 @@
 import ThresholdKey from "@tkey/default";
-import WebStorageModule from "@tkey/web-storage";
 import SecurityQuestionsModule from "@tkey/security-questions";
-import { TorusStorageLayer } from "@tkey/storage-layer-torus";
 import { TorusServiceProvider } from "@tkey/service-provider-torus";
+import { TorusStorageLayer } from "@tkey/storage-layer-torus";
+import WebStorageModule from "@tkey/web-storage";
 
 // Configuration of Service Provider
 
