@@ -1,8 +1,8 @@
+import TorusUtils from "@toruslabs/torus.js";
 import BN from "bn.js";
 import EC from "elliptic";
-import { io, Socket } from "socket.io-client";
-import TorusUtils from "@toruslabs/torus.js";
 import KJUR from "jsrsasign";
+import { io, Socket } from "socket.io-client";
 
 const torusNodeEndpoints = [
   "https://sapphire-dev-2-1.authnetwork.dev/sss/jrpc",
@@ -18,14 +18,12 @@ const torus = new TorusUtils({
   enableOneKey: true,
 });
 
-
 export function getEcCrypto(): any {
   // eslint-disable-next-line new-cap
   return new EC.ec("secp256k1");
 }
 
-
-export function ecPoint(p: { x: string, y: string }): any {
+export function ecPoint(p: { x: string; y: string }): any {
   const ec = getEcCrypto();
   return ec.keyFromPublic({ x: p.x.padStart(64, "0"), y: p.y.padStart(64, "0") }).getPublic();
 }
@@ -51,7 +49,7 @@ export const getDenormaliseCoeff = (party: number, parties: number[]): BN => {
   return denormaliseLagrangeCoeff;
 };
 
-export const getDKLSCoeff = (isUser: boolean, participatingServerIndexes: number[], userTSSIndex: number, serverIndex?: number, ): BN => {
+export const getDKLSCoeff = (isUser: boolean, participatingServerIndexes: number[], userTSSIndex: number, serverIndex?: number): BN => {
   const sortedServerIndexes = participatingServerIndexes.sort((a, b) => a - b);
   for (let i = 0; i < sortedServerIndexes.length; i++) {
     if (sortedServerIndexes[i] !== participatingServerIndexes[i]) throw new Error("server indexes must be sorted");
@@ -63,7 +61,7 @@ export const getDKLSCoeff = (isUser: boolean, participatingServerIndexes: number
   // server party indexes
   let serverPartyIndex = 0;
   for (let i = 0; i < participatingServerIndexes.length; i++) {
-    const currentPartyIndex = i+1;
+    const currentPartyIndex = i + 1;
     parties.push(currentPartyIndex);
     if (participatingServerIndexes[i] === serverIndex) serverPartyIndex = currentPartyIndex;
   }
@@ -108,10 +106,15 @@ export const createSockets = async (wsEndpoints: string[]): Promise<Socket[]> =>
     if (wsEndpoint === null || wsEndpoint === undefined) {
       return null as any;
     }
-    return io(wsEndpoint, { path: "/tss/socket.io", transports: ["websocket", "polling"], withCredentials: true, reconnectionDelayMax: 10000, reconnectionAttempts: 10 });
+    return io(wsEndpoint, {
+      path: "/tss/socket.io",
+      transports: ["websocket", "polling"],
+      withCredentials: true,
+      reconnectionDelayMax: 10000,
+      reconnectionAttempts: 10,
+    });
   });
 };
-
 
 const jwtPrivateKey = `-----BEGIN PRIVATE KEY-----\nMEECAQAwEwYHKoZIzj0CAQYIKoZIzj0DAQcEJzAlAgEBBCCD7oLrcKae+jVZPGx52Cb/lKhdKxpXjl9eGNa1MlY57A==\n-----END PRIVATE KEY-----`;
 export const generateIdToken = (email) => {
@@ -133,12 +136,11 @@ export const generateIdToken = (email) => {
   };
 
   const header = { alg, typ: "JWT" };
-  //@ts-ignore
+  // @ts-ignore
   const token = KJUR.jws.JWS.sign(alg, header, payload, jwtPrivateKey, options);
 
   return token;
 };
-
 
 export async function fetchPostboxKeyAndSigs(opts) {
   const { verifierName, verifierId } = opts;
@@ -168,11 +170,7 @@ export async function fetchPostboxKeyAndSigs(opts) {
 export async function assignTssKey(opts) {
   const { verifierName, verifierId, tssTag = "default", nonce } = opts;
   const extendedVerifierId = `${verifierId}\u0015${tssTag}\u0016${nonce}`;
-  const pubKeyDetails = await torus.getPublicAddress(
-    torusNodeEndpoints,
-    { verifier: verifierName, verifierId: verifierId, extendedVerifierId: extendedVerifierId },
-    true
-  );
+  const pubKeyDetails = await torus.getPublicAddress(torusNodeEndpoints, { verifier: verifierName, verifierId, extendedVerifierId }, true);
 
   return pubKeyDetails;
 }
