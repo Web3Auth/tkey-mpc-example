@@ -7,9 +7,7 @@
     "ecmaVersion": 11,
     "project": "./tsconfig.json"
   },
-  {
-    "plugins": ["only-warn"]
-  },
+  "plugins": ["only-warn"],
   "rules": {
     "@typescript-eslint/no-throw-literal": 0,
     "react-hooks/exhaustive-deps": 0,
