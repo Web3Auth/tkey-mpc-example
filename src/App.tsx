@@ -4,8 +4,9 @@
 /* eslint-disable no-throw-literal */
 import "./App.css";
 
-import { getPubKeyPoint } from "@tkey/common-types";
+import { getPubKeyPoint, Point } from "@tkey/common-types";
 import TorusServiceProvider from "@tkey/service-provider-torus";
+import { ecPoint, encrypt, hexPoint, PointHex, randomSelection } from "@toruslabs/rss-client";
 import { Client } from "@toruslabs/tss-client";
 import * as tss from "@toruslabs/tss-lib";
 import { EthereumSigningProvider } from "@web3auth-mpc/ethereum-provider";
@@ -84,6 +85,7 @@ function App() {
   const [f2Index, setf2Index] = useState<number>(null);
   const [sessionId, setSessionID] = useState<any>(null);
   const [localFactorKey, setLocalFactorKey] = useState<any>(null);
+  const [numberOfTSSShares, setNumberOfTSSShares] = useState<any>(null);
 
   // Init Service Provider inside the useEffect Method
 
@@ -255,7 +257,7 @@ function App() {
     try {
       let loginResponse, verifier, oAuthShare;
       if (mockLogin) {
-        var response = await triggerMockLogin();
+        const response = await triggerMockLogin();
         loginResponse = response.loginResponse;
         oAuthShare = response.postboxkey;
         verifier = "torus-test-health";
@@ -284,7 +286,6 @@ function App() {
 
       // Initialization of tKey
       await tKey.initialize({ useTSS: true, factorPub, deviceTSSShare, deviceTSSIndex });
-      await tKey.syncLocalMetadataTransitions();
 
       // Gets the deviceShare
       try {
@@ -321,6 +322,8 @@ function App() {
       const tssPubKey = getTSSPubKey(factor1PubKey, factor2PubKey, factor2Index);
       const compressedTSSPubKey = Buffer.from(`${tssPubKey.getX().toString(16, 64)}${tssPubKey.getY().toString(16, 64)}`, "hex");
       const vid = `${verifier}${DELIMITERS.Delimiter1}${verifierId}`;
+
+      await tKey.syncLocalMetadataTransitions();
       setSessionID(`${vid}${DELIMITERS.Delimiter2}default${DELIMITERS.Delimiter3}${tssNonce}${DELIMITERS.Delimiter4}`);
       setf2Share(factor2Share);
       setf2Index(factor2Index);
@@ -372,6 +375,85 @@ function App() {
     uiConsole(metadataKey);
     return metadataKey;
   };
+
+  const addNewTSSShareAndFactor = async (newFactorPub: Point, newFactorTSSIndex: number, inputFactorKey: BN) => {
+    if (!tKey) {
+      throw new Error("tkey does not exist, cannot add factor pub");
+    }
+    if (newFactorTSSIndex !== 2 && newFactorTSSIndex !== 3) {
+      throw new Error("tssIndex must be 2 or 3");
+    }
+    if (!tKey.metadata.factorPubs || !Array.isArray(tKey.metadata.factorPubs[tKey.tssTag])) {
+      throw new Error("factorPubs does not exist");
+    }
+    const existingFactorPubs = tKey.metadata.factorPubs[tKey.tssTag].slice();
+    const updatedFactorPubs = existingFactorPubs.concat([newFactorPub]);
+    const existingTSSIndexes = existingFactorPubs.map((fb) => tKey.getFactorEncs(fb).tssIndex);
+    const updatedTSSIndexes = existingTSSIndexes.concat([newFactorTSSIndex]);
+    const { tssShare, tssIndex } = await tKey.getTSSShare(inputFactorKey);
+    tKey.metadata.addTSSData({
+      tssTag: tKey.tssTag,
+      factorPubs: updatedFactorPubs,
+    });
+    const rssNodeDetails = await tKey._getRssNodeDetails();
+    const { serverEndpoints, serverPubKeys, serverThreshold } = rssNodeDetails;
+    const randomSelectedServers = randomSelection(
+      new Array(rssNodeDetails.serverEndpoints.length).fill(null).map((_, i) => i + 1),
+      Math.ceil(rssNodeDetails.serverEndpoints.length / 2)
+    );
+    const verifierNameVerifierId = tKey.serviceProvider.getVerifierNameVerifierId();
+    await tKey._refreshTSSShares(true, tssShare, tssIndex, updatedFactorPubs, updatedTSSIndexes, verifierNameVerifierId, {
+      selectedServers: randomSelectedServers,
+      serverEndpoints,
+      serverPubKeys,
+      serverThreshold,
+      authSignatures: await this.getSignatures(),
+    });
+    await tKey.syncLocalMetadataTransitions();
+  };
+
+  const copyExistingTSSShareForNewFactor = async (newFactorPub: Point, newFactorTSSIndex: number, inputFactorKey: BN) => {
+    if (!tKey) {
+      throw new Error("tkey does not exist, cannot copy factor pub");
+    }
+    if (newFactorTSSIndex !== 2 && newFactorTSSIndex !== 3) {
+      throw new Error("input factor tssIndex must be 2 or 3");
+    }
+    if (!tKey.metadata.factorPubs || !Array.isArray(tKey.metadata.factorPubs[tKey.tssTag])) {
+      throw new Error("factorPubs does not exist, failed in copy factor pub");
+    }
+    if (!tKey.metadata.factorEncs || typeof tKey.metadata.factorEncs[tKey.tssTag] !== "object") {
+      throw new Error("factorEncs does not exist, failed in copy factor pub");
+    }
+    const existingFactorPubs = tKey.metadata.factorPubs[tKey.tssTag].slice();
+    const updatedFactorPubs = existingFactorPubs.concat([newFactorPub]);
+    const { tssShare, tssIndex } = await tKey.getTSSShare(inputFactorKey);
+    if (tssIndex !== newFactorTSSIndex) {
+      throw new Error("retrieved tssIndex does not match input factor tssIndex");
+    }
+    const factorEncs = JSON.parse(JSON.stringify(tKey.metadata.factorEncs[tKey.tssTag]));
+    const factorPubID = newFactorPub.x.toString(16, 64);
+    factorEncs[factorPubID] = {
+      tssIndex: newFactorTSSIndex,
+      type: "direct",
+      userEnc: await encrypt(
+        Buffer.concat([
+          Buffer.from("04", "hex"),
+          Buffer.from(newFactorPub.x.toString(16, 64), "hex"),
+          Buffer.from(newFactorPub.y.toString(16, 64), "hex"),
+        ]),
+        Buffer.from(tssShare.toString(16, 64), "hex")
+      ),
+      serverEncs: [],
+    };
+    tKey.metadata.addTSSData({
+      tssTag: tKey.tssTag,
+      factorPubs: updatedFactorPubs,
+      factorEncs,
+    });
+    await tKey.syncLocalMetadataTransitions();
+  };
+
 
   const getChainID = async () => {
     if (!provider) {
@@ -505,12 +587,24 @@ function App() {
             Send Transaction
           </button>
         </div>
+        {/* <div>
+          <button onClick={addNewTSSShareAndFactor} className="card">
+          addNewTSSShareAndFactor
+          </button>
+        </div>
+        <div>
+          <button onClick={copyExistingTSSShareForNewFactor} className="card">
+          copyExistingTSSShareForNewFactor
+          </button>
+        </div> */}
         <div>
           <button onClick={logout} className="card">
             Log Out
           </button>
         </div>
       </div>
+
+      
 
       <div id="console" style={{ whiteSpace: "pre-line" }}>
         <p style={{ whiteSpace: "pre-line" }}></p>
