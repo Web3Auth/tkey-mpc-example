@@ -86,6 +86,7 @@ function App() {
   const [sessionId, setSessionID] = useState<any>(null);
   const [localFactorKey, setLocalFactorKey] = useState<any>(null);
   const [numberOfTSSShares, setNumberOfTSSShares] = useState<any>(null);
+  const [oAuthShare, setOAuthShare] = useState<any>(null);
 
   // Init Service Provider inside the useEffect Method
 
@@ -235,13 +236,11 @@ function App() {
       const loginResponse = {
         userInfo: { name: verifierId },
         signatures,
+        privateKey: postboxkey,
       };
       uiConsole("This is the login response:", loginResponse);
       setUser(loginResponse.userInfo);
-      return {
-        loginResponse,
-        postboxkey,
-      };
+      return loginResponse;
       // uiConsole('Public Key : ' + loginResponse.publicAddress);
       // uiConsole('Email : ' + loginResponse.userInfo.email);
     } catch (error) {
@@ -255,17 +254,16 @@ function App() {
       return;
     }
     try {
-      let loginResponse, verifier, oAuthShare;
+      let loginResponse, verifier;
       if (mockLogin) {
-        const response = await triggerMockLogin();
-        loginResponse = response.loginResponse;
-        oAuthShare = response.postboxkey;
+        loginResponse = await triggerMockLogin();
         verifier = "torus-test-health";
       } else {
         loginResponse = await triggerLogin(); // Calls the triggerLogin() function above
-        oAuthShare = loginResponse.privateKey;
         verifier = "mpc-key-demo-passwordless";
       }
+      setOAuthShare(loginResponse.privateKey);
+
       const signatures = loginResponse.signatures.filter((sign) => sign !== null);
       const verifierId = loginResponse.userInfo.name;
 
@@ -298,11 +296,7 @@ function App() {
       // starts from 2 by default and each of the above share reduce it by one.
       const { requiredShares } = tKey.getKeyDetails();
       if (requiredShares > 0) {
-        await tKey.storageLayer.setMetadata({
-          privKey: oAuthShare,
-          input: { message: "KEY_NOT_FOUND" },
-        });
-        throw `Threshold not met. Required Share: ${requiredShares} Automatically resetting your keys.`;
+        throw `Threshold not met. Required Share: ${requiredShares}. You should reset your account.`;
       }
       // 2. Reconstruct the Metadata Key
       const metadataKey = await tKey.reconstructKey();
@@ -454,6 +448,17 @@ function App() {
     await tKey.syncLocalMetadataTransitions();
   };
 
+  const resetAccount = async () => {
+    try {
+      await tKey.storageLayer.setMetadata({
+        privKey: oAuthShare,
+        input: { message: "KEY_NOT_FOUND" },
+      });
+      uiConsole("Reset Account Successful.");
+    } catch (e) {
+      uiConsole(e);
+    }
+  };
 
   const getChainID = async () => {
     if (!provider) {
@@ -562,6 +567,11 @@ function App() {
           </button>
         </div>
         <div>
+          <button onClick={resetAccount} className="card">
+            Reset Account
+          </button>
+        </div>
+        <div>
           <button onClick={getChainID} className="card">
             Get Chain ID
           </button>
@@ -589,12 +599,12 @@ function App() {
         </div>
         {/* <div>
           <button onClick={addNewTSSShareAndFactor} className="card">
-          addNewTSSShareAndFactor
+            addNewTSSShareAndFactor
           </button>
         </div>
         <div>
           <button onClick={copyExistingTSSShareForNewFactor} className="card">
-          copyExistingTSSShareForNewFactor
+            copyExistingTSSShareForNewFactor
           </button>
         </div> */}
         <div>
@@ -603,8 +613,6 @@ function App() {
           </button>
         </div>
       </div>
-
-      
 
       <div id="console" style={{ whiteSpace: "pre-line" }}>
         <p style={{ whiteSpace: "pre-line" }}></p>
