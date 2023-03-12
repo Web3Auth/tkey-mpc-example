@@ -7,13 +7,13 @@
     "ecmaVersion": 11,
     "project": "./tsconfig.json"
   },
+  {
+    "plugins": ["only-warn"]
+  },
   "rules": {
     "@typescript-eslint/no-throw-literal": 0,
     "react-hooks/exhaustive-deps": 0,
     "no-case-declarations": 0,
-    "options": {
-      "emitWarning": true,
-    },
     "import/extensions": [
       "error",
       "ignorePackages",
