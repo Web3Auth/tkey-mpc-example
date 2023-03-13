@@ -325,6 +325,8 @@ function App() {
       const compressedTSSPubKey = Buffer.from(`${tssPubKey.getX().toString(16, 64)}${tssPubKey.getY().toString(16, 64)}`, "hex");
       const vid = `${verifier}${DELIMITERS.Delimiter1}${verifierId}`;
 
+      // 5. save factor key and other metadata
+      await addFactorKeyMetadata(deviceTSSShare, deviceTSSShare, deviceTSSIndex, "local storage key")
       await tKey.syncLocalMetadataTransitions();
       setSessionID(`${vid}${DELIMITERS.Delimiter2}default${DELIMITERS.Delimiter3}${tssNonce}${DELIMITERS.Delimiter4}`);
       setf2Share(factor2Share);
@@ -375,7 +377,7 @@ function App() {
     }
   }
 
-  const addFactorKeyMetadata = async (factorKey: BN, tssShare: BN, tssIndex: number) => {
+  const addFactorKeyMetadata = async (factorKey: BN, tssShare: BN, tssIndex: number, factorKeyDescription: string) => {
     if (!tKey) {
       uiConsole("tKey not initialized yet");
       return;
@@ -399,9 +401,14 @@ function App() {
       input: [{ message: JSON.stringify(metadataToSet) }],
       privKey: [factorKey],
     });
+
+    // also set a description on tkey
+    const params = {
+      module: factorKeyDescription,
+      dateAdded: Date.now(),
+    };
+    await this.tKey.addShareDescription(factorIndex, JSON.stringify(params), true);
   }
-
-
 
   const keyDetails = async () => {
     if (!tKey) {
