@@ -31,7 +31,7 @@ function Login() {
   const onEmailChanged = (e: FormEvent<HTMLInputElement>) => {
     e.preventDefault();
     setEmail(e.currentTarget.value);
-    if (isWebAuthnSupported) {
+    if (isWebAuthnSupported && email.match(/^([\w.%+-]+)@([\w-]+\.)+([\w]{2,})$/i)) {
       debounce(async () => {
         try {
           console.log("fetching webauthn status");
