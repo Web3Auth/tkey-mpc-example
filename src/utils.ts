@@ -12,7 +12,7 @@ const torusNodeEndpoints = [
   "https://sapphire-dev-2-5.authnetwork.dev/sss/jrpc",
 ];
 
-const torus = new TorusUtils({
+export const torus = new TorusUtils({
   metadataHost: "https://sapphire-dev-2-1.authnetwork.dev/metadata",
   network: "cyan",
   enableOneKey: true,

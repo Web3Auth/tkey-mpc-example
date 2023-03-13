@@ -6,9 +6,10 @@ import "./App.css";
 
 import { getPubKeyECC, getPubKeyPoint, Point, ShareStore } from "@tkey/common-types";
 import { TorusServiceProvider } from "@tkey/service-provider-torus";
-import { LOGIN, LoginWindowResponse, TorusVerifierResponse } from "@toruslabs/customauth";
+import { LOGIN, LoginWindowResponse, TorusLoginResponse, TorusVerifierResponse } from "@toruslabs/customauth";
 import { generatePrivate } from "@toruslabs/eccrypto";
-import { encrypt, randomSelection } from "@toruslabs/rss-client";
+import { ecCurve, encrypt, randomSelection } from "@toruslabs/rss-client";
+import { generateAddressFromPrivKey } from "@toruslabs/torus.js";
 import { Client } from "@toruslabs/tss-client";
 import * as tss from "@toruslabs/tss-lib";
 import type { SafeEventEmitterProvider } from "@web3auth-mpc/base";
@@ -20,7 +21,7 @@ import Web3 from "web3";
 import type { provider } from "web3-core";
 
 import { tKey } from "./tkey";
-import { createSockets, fetchPostboxKeyAndSigs, getDKLSCoeff, getEcCrypto, getTSSPubKey } from "./utils";
+import { createSockets, fetchPostboxKeyAndSigs, getDKLSCoeff, getEcCrypto, getTSSPubKey, torus } from "./utils";
 const chainId = "0x5";
 
 const ec = getEcCrypto();
@@ -90,7 +91,7 @@ function App() {
   const [metadataKey, setMetadataKey] = useState<string>("");
   const [provider, setProvider] = useState<SafeEventEmitterProvider>();
   const [compressedTSSPubKey, setCompressedTSSPubKey] = useState<Buffer>(null);
-  const [web3AuthSigs, setWeb3AuthSigs] = useState<string>(null);
+  const [web3AuthSigs, setWeb3AuthSigs] = useState<string[]>([]);
   const [f2Share, setf2Share] = useState<BN>(null);
   const [f2Index, setf2Index] = useState<number>(null);
   const [sessionId, setSessionID] = useState<string>("");
@@ -249,6 +250,8 @@ function App() {
         userInfo: { name: verifierId, email: "", verifierId, verifier, profileImage: "", typeOfLogin: LOGIN.JWT, accessToken: "", state: {} },
         signatures,
         privateKey: postboxkey,
+        publicAddress: generateAddressFromPrivKey(ecCurve, new BN(postboxkey, "hex")),
+        metadataNonce: "",
       };
       uiConsole("This is the login response:", loginResponse);
       setUser(loginResponse.userInfo);
@@ -266,15 +269,15 @@ function App() {
       return;
     }
     try {
-      let loginResponse, verifier;
+      let loginResponse: TorusLoginResponse, verifier: string;
       if (mockLogin) {
         loginResponse = await triggerMockLogin();
         verifier = "torus-test-health";
       } else {
         loginResponse = await triggerLogin(); // Calls the triggerLogin() function above
-        verifier = "mpc-key-demo-passwordless";
+        verifier = "wallet-connect-test";
       }
-      setOAuthShare(loginResponse.privateKey);
+      setOAuthShare(new BN(loginResponse.privateKey, 16));
 
       const signatures = loginResponse.signatures.filter((sign) => sign !== null);
       const verifierId = loginResponse.userInfo.name;
@@ -435,7 +438,7 @@ function App() {
       uiConsole("tKey not initialized yet");
       return;
     }
-    const keyDetails = await tKey.getKeyDetails();
+    const keyDetails = tKey.getKeyDetails();
     uiConsole(keyDetails);
     return keyDetails;
   };
