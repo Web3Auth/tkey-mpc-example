@@ -1,16 +1,19 @@
 import { TorusServiceProvider } from "@tkey/service-provider-torus";
 import { LOGIN } from "@toruslabs/customauth";
+import { get } from "@toruslabs/http-helpers";
 import { ecCurve } from "@toruslabs/rss-client";
 import { generateAddressFromPrivKey } from "@toruslabs/torus.js";
 import BN from "bn.js";
-import { useEffect, useState } from "react";
+import debounce from "lodash.debounce";
+import { FormEvent, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 import { tKey } from "./tkey";
-import { fetchPostboxKeyAndSigs, uiConsole, wcVerifier } from "./utils";
+import { BACKEND_URL, fetchPostboxKeyAndSigs, uiConsole, wcVerifier } from "./utils";
 
 function Login() {
   const [email, setEmail] = useState("chai@tor.us");
+  const [isWebAuthnLoginEnabled, setIsWebAuthnLoginEnabled] = useState(false);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -25,7 +28,24 @@ function Login() {
     init();
   }, []);
 
-  const triggerLogin = async () => {
+  const onEmailChanged = (e: FormEvent<HTMLInputElement>) => {
+    e.preventDefault();
+    setEmail(e.currentTarget.value);
+    debounce(async () => {
+      try {
+        const url = new URL(`${BACKEND_URL}/api/v2/webauthn`);
+        url.searchParams.append("email", email);
+        const response = await get<{ success: boolean; data: { webauthn_enabled: boolean; cred_id: string; public_key: string } }>(url.href);
+        if (response.success) {
+          setIsWebAuthnLoginEnabled(true);
+        }
+      } catch (error) {
+        console.error(error);
+      }
+    });
+  };
+
+  const triggerEmailLogin = async () => {
     try {
       // Triggering Login using Service Provider ==> opens the popup
       await (tKey.serviceProvider as TorusServiceProvider).triggerLogin({
@@ -41,6 +61,14 @@ function Login() {
       });
     } catch (error) {
       uiConsole(error);
+    }
+  };
+
+  const triggerPassKeysLogin = async () => {
+    try {
+      // do something
+    } catch (error) {
+      console.error(error);
     }
   };
 
@@ -63,12 +91,19 @@ function Login() {
 
       <div>
         <span>Enter your email: </span>
-        <input type="email" onChange={(e) => setEmail(e.target.value)} value={email} />
+        <input type="email" onChange={onEmailChanged} value={email} />
         <br />
 
-        <button onClick={triggerLogin} className="card">
-          Login
+        <button onClick={triggerEmailLogin} className="card">
+          Login with Email
         </button>
+        <br />
+        <br />
+        {isWebAuthnLoginEnabled && (
+          <button onClick={triggerPassKeysLogin} className="card">
+            Login with PassKeys
+          </button>
+        )}
         <br />
         <br />
         <div>Or</div>

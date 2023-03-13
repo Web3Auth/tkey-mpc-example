@@ -1,3 +1,4 @@
+import { ShareStore } from "@tkey/common-types";
 import TorusUtils from "@toruslabs/torus.js";
 import BN from "bn.js";
 import EC from "elliptic";
@@ -5,6 +6,7 @@ import rs from "jsrsasign";
 import { io, Socket } from "socket.io-client";
 
 export const wcVerifier = "wallet-connect-test";
+export const BACKEND_URL = "https://wc-admin.web3auth.com";
 
 const torusNodeEndpoints = [
   "https://sapphire-dev-2-1.authnetwork.dev/sss/jrpc",
@@ -190,4 +192,17 @@ export const uiConsole = (...args: any[]): void => {
     el.innerHTML = JSON.stringify(args || {}, null, 2);
   }
   console.log(...args);
+};
+
+export type FactorKeyCloudMetadata = {
+  deviceShare: ShareStore;
+  tssShare: BN;
+  tssIndex: number;
+};
+
+export const DELIMITERS = {
+  Delimiter1: "\u001c",
+  Delimiter2: "\u0015",
+  Delimiter3: "\u0016",
+  Delimiter4: "\u0017",
 };
