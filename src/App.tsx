@@ -19,6 +19,7 @@ import Web3 from "web3";
 
 import { tKey } from "./tkey";
 import { createSockets, fetchPostboxKeyAndSigs, getDKLSCoeff, getEcCrypto, getTSSPubKey } from "./utils";
+import { debug } from "console";
 
 const ec = getEcCrypto();
 
@@ -301,30 +302,20 @@ function App() {
     
           if (!metadataShare.deviceShare || !metadataShare.tssShare)
             throw new Error('Invalid data from metadata');
-          // if (!this.tKey) throw new Error('tkey unavailable');
           metadataDeviceShare = metadataShare.deviceShare;
           exisitingUser = true;
       }
 
       const factorPub = getPubKeyPoint(factorKey);
-
       // Initialization of tKey
       if (exisitingUser) {
         await tKey.initialize({ neverInitializeNewKey: true });
-        await this.tKey.inputShareStoreSafe(metadataDeviceShare, true);
-        await this.tKey.reconstructKey();
+        await tKey.inputShareStoreSafe(metadataDeviceShare, true);
+        await tKey.reconstructKey();
       } else {
         await tKey.initialize({ useTSS: true, factorPub, deviceTSSShare, deviceTSSIndex });
       }
-
-
-      // // Gets the deviceShare
-      // try {
-      //   await (tKey.modules.webStorage as any).inputShareFromWebStorage(); // 2/2 flow
-      // } catch (e) {
-      //   uiConsole(e);
-      // }
-
+      
       // Checks the requiredShares to reconstruct the tKey,
       // starts from 2 by default and each of the above share reduce it by one.
       const { requiredShares } = tKey.getKeyDetails();
@@ -351,6 +342,7 @@ function App() {
       const vid = `${verifier}${DELIMITERS.Delimiter1}${verifierId}`;
 
       // 5. save factor key and other metadata
+      debugger
       await addFactorKeyMetadata(factorKey, factor2Share, factor2Index, "local storage key");
       await tKey.syncLocalMetadataTransitions();
       setLocalFactorKey(factorKey);
@@ -433,7 +425,7 @@ function App() {
       module: factorKeyDescription,
       dateAdded: Date.now(),
     };
-    await this.tKey.addShareDescription(factorIndex, JSON.stringify(params), true);
+    await tKey.addShareDescription(factorIndex, JSON.stringify(params), true);
   }
 
   const keyDetails = async () => {
