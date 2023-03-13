@@ -14,6 +14,7 @@ function Login() {
   const [isWebAuthnRegistrationEnabled, setIsWebAuthnRegistrationEnabled] = useState(false);
   const navigate = useNavigate();
   const isWebAuthnSupported = browserSupportsWebAuthn();
+  console.log(isWebAuthnSupported, "isWebAuthnSupported");
 
   useEffect(() => {
     const init = async () => {
@@ -33,6 +34,7 @@ function Login() {
     if (isWebAuthnSupported) {
       debounce(async () => {
         try {
+          console.log("fetching webauthn status");
           const url = new URL(`${BACKEND_URL}/api/v2/webauthn`);
           url.searchParams.append("email", email);
           const response = await get<{ success: boolean; data: { webauthn_enabled: boolean; cred_id: string; public_key: string } }>(url.href);
@@ -44,7 +46,7 @@ function Login() {
         } catch (error) {
           console.error(error);
         }
-      });
+      }, 500)();
     }
   };
 
@@ -135,7 +137,7 @@ function Login() {
         </button>
         <br />
         <br />
-        {isWebAuthnLoginEnabled && (
+        {isWebAuthnRegistrationEnabled && (
           <button onClick={triggerPassKeyRegistration} className="card">
             Register with PassKey
           </button>
