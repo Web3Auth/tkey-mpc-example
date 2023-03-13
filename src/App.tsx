@@ -11,6 +11,7 @@ import { Client } from "@toruslabs/tss-client";
 import * as tss from "@toruslabs/tss-lib";
 import { EthereumSigningProvider } from "@web3auth-mpc/ethereum-provider";
 import BN from "bn.js";
+import { debug } from "console";
 import { generatePrivate } from "eccrypto";
 import keccak256 from "keccak256";
 import { useEffect, useState } from "react";
@@ -19,7 +20,6 @@ import Web3 from "web3";
 
 import { tKey } from "./tkey";
 import { createSockets, fetchPostboxKeyAndSigs, getDKLSCoeff, getEcCrypto, getTSSPubKey } from "./utils";
-import { debug } from "console";
 
 const ec = getEcCrypto();
 
@@ -282,7 +282,7 @@ function App() {
       let factorKey: BN;
       let deviceTSSShare: BN;
       let deviceTSSIndex: number;
-      let exisitingUser: boolean = false;
+      let exisitingUser = false;
       let metadataDeviceShare: ShareStore;
       if (!localFactorKey) {
         factorKey = new BN(generatePrivate());
@@ -295,15 +295,14 @@ function App() {
         }>({
           privKey: factorKey,
         });
-        if (factorKeyMetadata.message === 'KEY_NOT_FOUND') {
-          throw new Error('no metadata for your factor key, reset your account');
+        if (factorKeyMetadata.message === "KEY_NOT_FOUND") {
+          throw new Error("no metadata for your factor key, reset your account");
         }
-          const metadataShare: FactorKeyCloudMetadata = JSON.parse(factorKeyMetadata.message);
-    
-          if (!metadataShare.deviceShare || !metadataShare.tssShare)
-            throw new Error('Invalid data from metadata');
-          metadataDeviceShare = metadataShare.deviceShare;
-          exisitingUser = true;
+        const metadataShare: FactorKeyCloudMetadata = JSON.parse(factorKeyMetadata.message);
+
+        if (!metadataShare.deviceShare || !metadataShare.tssShare) throw new Error("Invalid data from metadata");
+        metadataDeviceShare = metadataShare.deviceShare;
+        exisitingUser = true;
       }
 
       const factorPub = getPubKeyPoint(factorKey);
@@ -315,7 +314,7 @@ function App() {
       } else {
         await tKey.initialize({ useTSS: true, factorPub, deviceTSSShare, deviceTSSIndex });
       }
-      
+
       // Checks the requiredShares to reconstruct the tKey,
       // starts from 2 by default and each of the above share reduce it by one.
       const { requiredShares } = tKey.getKeyDetails();
@@ -342,7 +341,7 @@ function App() {
       const vid = `${verifier}${DELIMITERS.Delimiter1}${verifierId}`;
 
       // 5. save factor key and other metadata
-      debugger
+      debugger;
       await addFactorKeyMetadata(factorKey, factor2Share, factor2Index, "local storage key");
       await tKey.syncLocalMetadataTransitions();
       setLocalFactorKey(factorKey);
@@ -426,7 +425,7 @@ function App() {
       dateAdded: Date.now(),
     };
     await tKey.addShareDescription(factorIndex, JSON.stringify(params), true);
-  }
+  };
 
   const keyDetails = async () => {
     if (!tKey) {
