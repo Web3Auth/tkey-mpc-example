@@ -101,6 +101,8 @@ function Login() {
       if (resp2.verified) {
         // Registration successful
         console.log("Registration successful");
+        setIsWebAuthnRegistrationEnabled(false);
+        setIsWebAuthnLoginEnabled(true);
         // get id token
       } else {
         throw new Error("Registration failed");
