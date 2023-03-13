@@ -31,25 +31,24 @@ function Login() {
     init();
   }, []);
 
-  const onEmailChanged = (e: FormEvent<HTMLInputElement>) => {
+  const onEmailChanged = async (e: FormEvent<HTMLInputElement>) => {
     e.preventDefault();
-    setEmail(e.currentTarget.value);
-    if (isWebAuthnSupported && email.match(/^([\w.%+-]+)@([\w-]+\.)+([\w]{2,})$/i)) {
-      debounce(async () => {
-        try {
-          console.log("fetching webauthn status");
-          const url = new URL(`${BACKEND_URL}/api/v2/webauthn`);
-          url.searchParams.append("email", email);
-          const response = await get<{ success: boolean; data: { webauthn_enabled: boolean; cred_id: string; public_key: string } }>(url.href);
-          if (response.success) {
-            setIsWebAuthnLoginEnabled(true);
-          } else {
-            setIsWebAuthnRegistrationEnabled(true);
-          }
-        } catch (error) {
-          console.error(error);
+    const newEmail = e.currentTarget.value;
+    setEmail(newEmail);
+    if (isWebAuthnSupported && newEmail.match(/^([\w.%+-]+)@([\w-]+\.)+([\w]{2,})$/i)) {
+      try {
+        console.log("fetching webauthn status");
+        const url = new URL(`${BACKEND_URL}/api/v2/webauthn`);
+        url.searchParams.append("email", newEmail);
+        const response = await get<{ success: boolean; data: { webauthn_enabled: boolean; cred_id: string; public_key: string } }>(url.href);
+        if (response.success) {
+          setIsWebAuthnLoginEnabled(true);
+        } else {
+          setIsWebAuthnRegistrationEnabled(true);
         }
-      }, 500)();
+      } catch (error) {
+        console.error(error);
+      }
     }
   };
 
@@ -137,21 +136,21 @@ function Login() {
           <Text type="secondary">Enter your email: </Text>
           <Input size="large" type="email" placeholder="Enter your email..." onChange={(e) => onEmailChanged(e)} value={email} />
 
-          <Button size="large" type="primary" onClick={triggerEmailLogin} style={{ width: "200px", marginTop: "12px" }}>
+          <Button size="large" type="primary" onClick={triggerEmailLogin} style={{ width: "100%", marginTop: "12px" }}>
             Login
           </Button>
           {isWebAuthnRegistrationEnabled && (
-            <button onClick={triggerPassKeyRegistration} className="card">
+            <Button size="large" type="default" onClick={triggerPassKeyRegistration} style={{ width: "100%", marginTop: "12px" }}>
               Register with PassKey
-            </button>
+            </Button>
           )}
           {isWebAuthnLoginEnabled && (
-            <button onClick={triggerPassKeyLogin} className="card">
+            <Button size="large" type="default" onClick={triggerPassKeyLogin} style={{ width: "100%", marginTop: "12px" }}>
               Login with PassKey
-            </button>
+            </Button>
           )}
           <Divider plain>OR</Divider>
-          <Button size="large" type="primary" onClick={triggerMockLogin} style={{ width: "200px", marginTop: "12px" }}>
+          <Button size="large" type="primary" onClick={triggerMockLogin} style={{ width: "100%", marginTop: "12px" }}>
             MockLogin
           </Button>
         </Col>
