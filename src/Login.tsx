@@ -1,12 +1,15 @@
 import { browserSupportsWebAuthn, startAuthentication, startRegistration } from "@simplewebauthn/browser";
 import { TorusServiceProvider } from "@tkey/service-provider-torus";
 import { get, post } from "@toruslabs/http-helpers";
+import { Button, Col, Divider, Input, Row, Typography } from "antd";
 import debounce from "lodash.debounce";
 import { FormEvent, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 import { tKey } from "./tkey";
 import { BACKEND_URL, uiConsole, wcVerifier } from "./utils";
+
+const { Text } = Typography;
 
 function Login() {
   const [email, setEmail] = useState("");
@@ -129,34 +132,30 @@ function Login() {
         & ReactJS Ethereum Example
       </h1>
 
-      <div>
-        <span>Enter your email: </span>
-        <input type="email" onChange={onEmailChanged} value={email} />
-        <br />
+      <Row justify={"center"}>
+        <Col span={8}>
+          <Text type="secondary">Enter your email: </Text>
+          <Input size="large" type="email" placeholder="Enter your email..." onChange={(e) => onEmailChanged(e)} value={email} />
 
-        <button onClick={triggerEmailLogin} className="card">
-          Login with Email
-        </button>
-        <br />
-        <br />
-        {isWebAuthnRegistrationEnabled && (
-          <button onClick={triggerPassKeyRegistration} className="card">
-            Register with PassKey
-          </button>
-        )}
-        {isWebAuthnLoginEnabled && (
-          <button onClick={triggerPassKeyLogin} className="card">
-            Login with PassKey
-          </button>
-        )}
-        <br />
-        <br />
-        <div>Or</div>
-        <br />
-        <button onClick={triggerMockLogin} className="card">
-          MockLogin
-        </button>
-      </div>
+          <Button size="large" type="primary" onClick={triggerEmailLogin} style={{ width: "200px", marginTop: "12px" }}>
+            Login
+          </Button>
+          {isWebAuthnRegistrationEnabled && (
+            <button onClick={triggerPassKeyRegistration} className="card">
+              Register with PassKey
+            </button>
+          )}
+          {isWebAuthnLoginEnabled && (
+            <button onClick={triggerPassKeyLogin} className="card">
+              Login with PassKey
+            </button>
+          )}
+          <Divider plain>OR</Divider>
+          <Button size="large" type="primary" onClick={triggerMockLogin} style={{ width: "200px", marginTop: "12px" }}>
+            MockLogin
+          </Button>
+        </Col>
+      </Row>
 
       <div id="console" style={{ whiteSpace: "pre-line" }}>
         <p style={{ whiteSpace: "pre-line" }}></p>
