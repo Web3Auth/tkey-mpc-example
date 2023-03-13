@@ -19,7 +19,7 @@ import Web3 from "web3";
 
 import { tKey } from "./tkey";
 import { createSockets, fetchPostboxKeyAndSigs, getDKLSCoeff, getEcCrypto, getTSSPubKey } from "./utils";
-const chainId = '0x5'
+const chainId = "0x5";
 
 const ec = getEcCrypto();
 
@@ -84,6 +84,7 @@ const generateTSSEndpoints = (parties: number, clientIndex: number) => {
 
 function App() {
   const [user, setUser] = useState<any>(null);
+  const [email, setEmail] = useState("");
   const [metadataKey, setMetadataKey] = useState<any>();
   const [provider, setProvider] = useState<any>();
   const [compressedTSSPubKey, setCompressedTSSPubKey] = useState<Buffer>(null);
@@ -112,7 +113,7 @@ function App() {
       }
     };
     init();
-  });
+  }, []);
   useEffect(() => {
     const ethProvider = async () => {
       try {
@@ -214,8 +215,10 @@ function App() {
         typeOfLogin: "jwt",
         verifier: "mpc-key-demo-passwordless",
         jwtParams: {
-          domain: "https://shahbaz-torus.us.auth0.com",
-          verifierIdField: "name",
+          domain: "https://wc-auth.web3auth.com",
+          // verifierIdField: "name",
+          connection: "email",
+          login_hint: email,
         },
         clientId: "QQRQNGxJ80AZ5odiIjt1qqfryPOeDcb1",
       });
@@ -700,6 +703,8 @@ function App() {
 
   const unloggedInView = (
     <div>
+      <span>Enter your email: </span>
+      <input type="email" onChange={(e) => setEmail(e.target.value)} />
       <button onClick={() => initializeNewKey(false)} className="card">
         Login
       </button>
