@@ -74,10 +74,11 @@ function Login() {
       const resp = await get(url.href);
       const attestationResponse = await startAuthentication(resp);
       const url2 = new URL(`${BACKEND_URL}/api/v2/webauthn-verify-authentication`);
-      const resp2 = await post<{ verified: boolean }>(url2.href, { attestationResponse, email });
+      const resp2 = await post<{ verified: boolean; id_token: string }>(url2.href, { attestationResponse, email });
       if (resp2.verified) {
         // Registration successful
         console.log("Login successful");
+        navigate({ pathname: "/auth", hash: `type=webauthn&id_token=${resp2.id_token}&login_hint=${email}` });
         // get id token
       } else {
         throw new Error("Login failed");
@@ -109,7 +110,7 @@ function Login() {
 
   const triggerMockLogin = async () => {
     try {
-      navigate({ pathname: "/auth", hash: "mock=true" });
+      navigate({ pathname: "/auth", hash: "type=mock" });
     } catch (error) {
       uiConsole(error);
     }

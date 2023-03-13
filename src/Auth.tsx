@@ -11,7 +11,7 @@ import Web3 from "web3";
 
 import { setupWeb3 } from "./signing";
 import { tKey } from "./tkey";
-import { DELIMITERS, FactorKeyCloudMetadata, fetchPostboxKeyAndSigs, getEcCrypto, getTSSPubKey, uiConsole } from "./utils";
+import { DELIMITERS, FactorKeyCloudMetadata, fetchPostboxKeyAndSigs, getEcCrypto, getTSSPubKey, uiConsole, wcVerifier } from "./utils";
 
 const ec = getEcCrypto();
 
@@ -106,11 +106,37 @@ function Auth() {
   useEffect(() => {
     async function getKeys() {
       const params = new URLSearchParams(location.hash.slice(1));
-      const isMock = params.get("mock");
+      const loginType = params.get("type");
       let currentLoginResponse: TorusLoginResponse;
-      if (isMock === "true") {
+      if (loginType === "mock") {
         currentLoginResponse = await doMockLogin();
         setLoginResponse(currentLoginResponse);
+      } else if (loginType === "webauthn") {
+        const loginHint = params.get("login_hint");
+        const idToken = params.get("id_token");
+        const response = await (tKey.serviceProvider as TorusServiceProvider).directWeb.getTorusKey(
+          wcVerifier,
+          loginHint,
+          { verifier_id: loginHint },
+          idToken
+        );
+        currentLoginResponse = {
+          userInfo: {
+            name: loginHint,
+            email: loginHint,
+            verifierId: loginHint,
+            verifier: wcVerifier,
+            profileImage: "",
+            typeOfLogin: LOGIN.JWT,
+            accessToken: "",
+            state: {},
+            idToken,
+          },
+          signatures: response.signatures,
+          privateKey: response.privateKey,
+          publicAddress: response.publicAddress,
+          metadataNonce: "",
+        };
       } else {
         const response = await (tKey.serviceProvider as TorusServiceProvider).directWeb.getRedirectResult();
         if (response.result) {
