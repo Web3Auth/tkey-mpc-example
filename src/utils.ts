@@ -4,6 +4,8 @@ import EC from "elliptic";
 import rs from "jsrsasign";
 import { io, Socket } from "socket.io-client";
 
+export const wcVerifier = "wallet-connect-test";
+
 const torusNodeEndpoints = [
   "https://sapphire-dev-2-1.authnetwork.dev/sss/jrpc",
   "https://sapphire-dev-2-2.authnetwork.dev/sss/jrpc",
@@ -181,3 +183,11 @@ export function getTSSPubKey(dkgPubKey, userSharePubKey, userTSSIndex): any {
   const userTerm = ecPoint(userSharePubKey).mul(userLagrangeCoeff);
   return serverTerm.add(userTerm);
 }
+
+export const uiConsole = (...args: any[]): void => {
+  const el = document.querySelector("#console>p");
+  if (el) {
+    el.innerHTML = JSON.stringify(args || {}, null, 2);
+  }
+  console.log(...args);
+};

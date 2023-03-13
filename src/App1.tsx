@@ -1,4 +1,3 @@
-/* eslint-disable require-atomic-updates */
 /* eslint-disable @typescript-eslint/no-shadow */
 /* eslint-disable no-console */
 /* eslint-disable no-throw-literal */
@@ -21,8 +20,7 @@ import Web3 from "web3";
 import type { provider } from "web3-core";
 
 import { tKey } from "./tkey";
-import { createSockets, fetchPostboxKeyAndSigs, getDKLSCoeff, getEcCrypto, getTSSPubKey, torus } from "./utils";
-const chainId = "0x5";
+import { createSockets, fetchPostboxKeyAndSigs, getDKLSCoeff, getEcCrypto, getTSSPubKey, wcVerifier } from "./utils";
 
 const ec = getEcCrypto();
 
@@ -43,14 +41,6 @@ type FactorKeyCloudMetadata = {
 };
 
 const tssImportUrl = `https://sapphire-dev-2-2.authnetwork.dev/tss/v1/clientWasm`;
-
-const uiConsole = (...args: any[]): void => {
-  const el = document.querySelector("#console>p");
-  if (el) {
-    el.innerHTML = JSON.stringify(args || {}, null, 2);
-  }
-  console.log(...args);
-};
 
 const setupSockets = async (tssWSEndpoints: string[]) => {
   const sockets = await createSockets(tssWSEndpoints);
@@ -87,7 +77,7 @@ const generateTSSEndpoints = (parties: number, clientIndex: number) => {
 
 function App() {
   const [user, setUser] = useState<TorusVerifierResponse & LoginWindowResponse>(null);
-  const [email, setEmail] = useState("");
+  const [email, setEmail] = useState("chai@tor.us");
   const [metadataKey, setMetadataKey] = useState<string>("");
   const [provider, setProvider] = useState<SafeEventEmitterProvider>();
   const [compressedTSSPubKey, setCompressedTSSPubKey] = useState<Buffer>(null);
@@ -105,17 +95,6 @@ function App() {
     localStorage.setItem("tKeyLocalStore", localFactorKey.toString("hex"));
   }, [localFactorKey]);
 
-  useEffect(() => {
-    const init = async () => {
-      // Initialization of Service Provider
-      try {
-        await (tKey.serviceProvider as any).init();
-      } catch (error) {
-        console.error(error);
-      }
-    };
-    init();
-  }, []);
   useEffect(() => {
     const ethProvider = async () => {
       try {
@@ -206,63 +185,6 @@ function App() {
     if (compressedTSSPubKey && web3AuthSigs.length > 0) ethProvider();
   }, [compressedTSSPubKey, web3AuthSigs]);
 
-  const triggerLogin = async () => {
-    if (!tKey) {
-      uiConsole("tKey not initialized yet");
-      return;
-    }
-    try {
-      // Triggering Login using Service Provider ==> opens the popup
-      const loginResponse = await (tKey.serviceProvider as TorusServiceProvider).triggerLogin({
-        typeOfLogin: "jwt",
-        verifier: "mpc-key-demo-passwordless",
-        jwtParams: {
-          domain: "https://wc-auth.web3auth.com",
-          // verifierIdField: "name",
-          connection: "email",
-          login_hint: email,
-        },
-        clientId: "QQRQNGxJ80AZ5odiIjt1qqfryPOeDcb1",
-      });
-      uiConsole("This is the login response:", loginResponse);
-      setUser(loginResponse.userInfo);
-      return loginResponse;
-      // uiConsole('Public Key : ' + loginResponse.publicAddress);
-      // uiConsole('Email : ' + loginResponse.userInfo.email);
-    } catch (error) {
-      uiConsole(error);
-    }
-  };
-
-  const triggerMockLogin = async () => {
-    if (!tKey) {
-      uiConsole("tKey not initialized yet");
-      return;
-    }
-    try {
-      const verifier = "torus-test-health";
-      const verifierId = "test809@example.com";
-      const { signatures, postboxkey } = await fetchPostboxKeyAndSigs({ verifierName: verifier, verifierId });
-      tKey.serviceProvider.postboxKey = new BN(postboxkey, "hex");
-      (tKey.serviceProvider as TorusServiceProvider).verifierName = verifier;
-      (tKey.serviceProvider as TorusServiceProvider).verifierId = verifierId;
-      const loginResponse = {
-        userInfo: { name: verifierId, email: "", verifierId, verifier, profileImage: "", typeOfLogin: LOGIN.JWT, accessToken: "", state: {} },
-        signatures,
-        privateKey: postboxkey,
-        publicAddress: generateAddressFromPrivKey(ecCurve, new BN(postboxkey, "hex")),
-        metadataNonce: "",
-      };
-      uiConsole("This is the login response:", loginResponse);
-      setUser(loginResponse.userInfo);
-      return loginResponse;
-      // uiConsole('Public Key : ' + loginResponse.publicAddress);
-      // uiConsole('Email : ' + loginResponse.userInfo.email);
-    } catch (error) {
-      uiConsole(error);
-    }
-  };
-
   const initializeNewKey = async (mockLogin: boolean) => {
     if (!tKey) {
       uiConsole("tKey not initialized yet");
@@ -275,7 +197,11 @@ function App() {
         verifier = "torus-test-health";
       } else {
         loginResponse = await triggerLogin(); // Calls the triggerLogin() function above
-        verifier = "wallet-connect-test";
+        verifier = wcVerifier;
+      }
+      if (!loginResponse?.privateKey) {
+        uiConsole("Private key not found");
+        return;
       }
       setOAuthShare(new BN(loginResponse.privateKey, 16));
 
@@ -701,19 +627,6 @@ function App() {
         <p style={{ whiteSpace: "pre-line" }}></p>
       </div>
     </>
-  );
-
-  const unloggedInView = (
-    <div>
-      <span>Enter your email: </span>
-      <input type="email" onChange={(e) => setEmail(e.target.value)} />
-      <button onClick={() => initializeNewKey(false)} className="card">
-        Login
-      </button>
-      <button onClick={() => initializeNewKey(true)} className="card">
-        MockLogin
-      </button>
-    </div>
   );
 
   return (

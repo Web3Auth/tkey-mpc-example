@@ -1,17 +1,13 @@
 import "./index.css";
 
-import React from "react";
 import { createRoot } from "react-dom/client";
+import { RouterProvider } from "react-router-dom";
 
-import App from "./App";
+import router from "./router";
 import { register } from "./serviceWorkerRegistration";
 
 const root = createRoot(document.getElementById("root") as HTMLElement);
-root.render(
-  <React.StrictMode>
-    <App />
-  </React.StrictMode>
-);
+root.render(<RouterProvider router={router} />);
 
 // If you want your app to work offline and load faster, you can change
 // unregister() to register() below. Note this comes with some pitfalls.

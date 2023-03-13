@@ -8,8 +8,10 @@ import { WebStorageModule } from "@tkey/web-storage";
 const torusSp = new TorusServiceProvider({
   useTSS: true,
   customAuthArgs: {
-    baseUrl: `${window.location.origin}/serviceworker`,
+    baseUrl: `${window.location.origin}`,
+    redirectPathName: "auth",
     enableLogging: true,
+    uxMode: "redirect",
   },
 });
 
