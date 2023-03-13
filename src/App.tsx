@@ -5,13 +5,12 @@
 import "./App.css";
 
 import { getPubKeyECC, getPubKeyPoint, Point, ShareStore } from "@tkey/common-types";
-import TorusServiceProvider from "@tkey/service-provider-torus";
-import { ecPoint, encrypt, hexPoint, PointHex, randomSelection } from "@toruslabs/rss-client";
+import { TorusServiceProvider } from "@tkey/service-provider-torus";
+import { encrypt, randomSelection } from "@toruslabs/rss-client";
 import { Client } from "@toruslabs/tss-client";
 import * as tss from "@toruslabs/tss-lib";
 import { EthereumSigningProvider } from "@web3auth-mpc/ethereum-provider";
 import BN from "bn.js";
-import { debug } from "console";
 import { generatePrivate } from "eccrypto";
 import keccak256 from "keccak256";
 import { useEffect, useState } from "react";
