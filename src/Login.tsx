@@ -9,7 +9,7 @@ import { tKey } from "./tkey";
 import { BACKEND_URL, uiConsole, wcVerifier } from "./utils";
 
 function Login() {
-  const [email, setEmail] = useState("chai@tor.us");
+  const [email, setEmail] = useState("");
   const [isWebAuthnLoginEnabled, setIsWebAuthnLoginEnabled] = useState(false);
   const [isWebAuthnRegistrationEnabled, setIsWebAuthnRegistrationEnabled] = useState(false);
   const navigate = useNavigate();
