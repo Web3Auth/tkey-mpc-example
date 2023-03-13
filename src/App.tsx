@@ -4,7 +4,7 @@
 /* eslint-disable no-throw-literal */
 import "./App.css";
 
-import { getPubKeyPoint, Point } from "@tkey/common-types";
+import { getPubKeyPoint, Point, ShareStore, getPubKeyECC } from "@tkey/common-types";
 import TorusServiceProvider from "@tkey/service-provider-torus";
 import { ecPoint, encrypt, hexPoint, PointHex, randomSelection } from "@toruslabs/rss-client";
 import { Client } from "@toruslabs/tss-client";
@@ -30,6 +30,12 @@ const DELIMITERS = {
   Delimiter2: "\u0015",
   Delimiter3: "\u0016",
   Delimiter4: "\u0017",
+};
+
+type FactorKeyCloudMetadata = {
+  deviceShare: ShareStore;
+  tssShare: BN;
+  tssIndex: number;
 };
 
 const tssImportUrl = `https://sapphire-dev-2-2.authnetwork.dev/tss/v1/clientWasm`;
@@ -84,13 +90,14 @@ function App() {
   const [f2Share, setf2Share] = useState<BN>(null);
   const [f2Index, setf2Index] = useState<number>(null);
   const [sessionId, setSessionID] = useState<any>(null);
-  const [localFactorKey, setLocalFactorKey] = useState<any>(null);
+  const [localFactorKey, setLocalFactorKey] = useState<BN>(null);
   const [numberOfTSSShares, setNumberOfTSSShares] = useState<any>(null);
 
   // Init Service Provider inside the useEffect Method
 
   useEffect(() => {
-    localStorage.setItem("factorKey", JSON.stringify(localFactorKey));
+    const tKeyLocalStore = {factorKey: localFactorKey };
+    localStorage.setItem("tKeyLocalStore", JSON.stringify(tKeyLocalStore));
   }, [localFactorKey]);
 
   useEffect(() => {
@@ -269,12 +276,13 @@ function App() {
       const signatures = loginResponse.signatures.filter((sign) => sign !== null);
       const verifierId = loginResponse.userInfo.name;
 
-      let factorKey = JSON.parse(localStorage.getItem("factorKey"));
-
-      if (!factorKey) {
+      let tKeyLocalStore = JSON.parse(localStorage.getItem("tKeyLocalStore"));
+      let factorKey:BN;
+      if (!tKeyLocalStore.factorKey) {
         factorKey = new BN(generatePrivate());
         uiConsole("factorKey generated!!!!!!!!!!!!!!!!!!!!", factorKey);
       } else {
+        factorKey = new BN(tKeyLocalStore.factorKey);
         uiConsole("factorKey not generated", factorKey);
       }
       setLocalFactorKey(factorKey);
@@ -351,6 +359,56 @@ function App() {
     }
   };
 
+  const  fetchDeviceShareFromTkey = async () => {
+    if (!tKey) {
+      uiConsole("tKey not initialized yet");
+      return;
+    }
+    try {
+      const polyId = tKey.metadata.getLatestPublicPolynomial().getPolynomialID();
+      const shares = tKey.shares[polyId];
+      let deviceShare: ShareStore;
+      // eslint-disable-next-line guard-for-in
+      for (const shareIndex in shares) {
+        if (shareIndex !== '1') {
+          deviceShare = shares[shareIndex] ;
+        }
+      }
+      return deviceShare;
+    } catch (err: any) {
+      uiConsole({ err });
+      throw new Error(err);
+    }
+  }
+
+  const addFactorKeyMetadata = async (factorKey: BN, tssShare: BN, tssIndex: number) => {
+    if (!tKey) {
+      uiConsole("tKey not initialized yet");
+      return;
+    }
+    const { requiredShares } = tKey.getKeyDetails();
+    if (requiredShares > 0) {
+      uiConsole("not enough shares for metadata key")
+    }
+
+    const metadataDeviceShare = await fetchDeviceShareFromTkey();
+ 
+    const factorIndex = getPubKeyECC(factorKey).toString('hex');
+    const metadataToSet: FactorKeyCloudMetadata = {
+      deviceShare: metadataDeviceShare,
+      tssShare,
+      tssIndex,
+    };
+
+    // Set metadata for factor key backup
+    await tKey.addLocalMetadataTransitions({
+      input: [{ message: JSON.stringify(metadataToSet) }],
+      privKey: [factorKey],
+    });
+  }
+
+
+
   const keyDetails = async () => {
     if (!tKey) {
       uiConsole("tKey not initialized yet");
@@ -409,7 +467,6 @@ function App() {
       serverThreshold,
       authSignatures: await this.getSignatures(),
     });
-    await tKey.syncLocalMetadataTransitions();
   };
 
   const copyExistingTSSShareForNewFactor = async (newFactorPub: Point, newFactorTSSIndex: number, inputFactorKey: BN) => {
@@ -451,9 +508,7 @@ function App() {
       factorPubs: updatedFactorPubs,
       factorEncs,
     });
-    await tKey.syncLocalMetadataTransitions();
   };
-
 
   const getChainID = async () => {
     if (!provider) {
