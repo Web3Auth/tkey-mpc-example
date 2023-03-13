@@ -1,20 +1,19 @@
+import { browserSupportsWebAuthn, startAuthentication, startRegistration } from "@simplewebauthn/browser";
 import { TorusServiceProvider } from "@tkey/service-provider-torus";
-import { LOGIN } from "@toruslabs/customauth";
-import { get } from "@toruslabs/http-helpers";
-import { ecCurve } from "@toruslabs/rss-client";
-import { generateAddressFromPrivKey } from "@toruslabs/torus.js";
-import BN from "bn.js";
+import { get, post } from "@toruslabs/http-helpers";
 import debounce from "lodash.debounce";
 import { FormEvent, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 import { tKey } from "./tkey";
-import { BACKEND_URL, fetchPostboxKeyAndSigs, uiConsole, wcVerifier } from "./utils";
+import { BACKEND_URL, uiConsole, wcVerifier } from "./utils";
 
 function Login() {
   const [email, setEmail] = useState("chai@tor.us");
   const [isWebAuthnLoginEnabled, setIsWebAuthnLoginEnabled] = useState(false);
+  const [isWebAuthnRegistrationEnabled, setIsWebAuthnRegistrationEnabled] = useState(false);
   const navigate = useNavigate();
+  const isWebAuthnSupported = browserSupportsWebAuthn();
 
   useEffect(() => {
     const init = async () => {
@@ -31,18 +30,22 @@ function Login() {
   const onEmailChanged = (e: FormEvent<HTMLInputElement>) => {
     e.preventDefault();
     setEmail(e.currentTarget.value);
-    debounce(async () => {
-      try {
-        const url = new URL(`${BACKEND_URL}/api/v2/webauthn`);
-        url.searchParams.append("email", email);
-        const response = await get<{ success: boolean; data: { webauthn_enabled: boolean; cred_id: string; public_key: string } }>(url.href);
-        if (response.success) {
-          setIsWebAuthnLoginEnabled(true);
+    if (isWebAuthnSupported) {
+      debounce(async () => {
+        try {
+          const url = new URL(`${BACKEND_URL}/api/v2/webauthn`);
+          url.searchParams.append("email", email);
+          const response = await get<{ success: boolean; data: { webauthn_enabled: boolean; cred_id: string; public_key: string } }>(url.href);
+          if (response.success) {
+            setIsWebAuthnLoginEnabled(true);
+          } else {
+            setIsWebAuthnRegistrationEnabled(true);
+          }
+        } catch (error) {
+          console.error(error);
         }
-      } catch (error) {
-        console.error(error);
-      }
-    });
+      });
+    }
   };
 
   const triggerEmailLogin = async () => {
@@ -64,9 +67,41 @@ function Login() {
     }
   };
 
-  const triggerPassKeysLogin = async () => {
+  const triggerPassKeyLogin = async () => {
     try {
-      // do something
+      const url = new URL(`${BACKEND_URL}/api/v2/webauthn-generate-authentication-options`);
+      url.searchParams.append("email", email);
+      const resp = await get(url.href);
+      const attestationResponse = await startAuthentication(resp);
+      const url2 = new URL(`${BACKEND_URL}/api/v2/webauthn-verify-authentication`);
+      const resp2 = await post<{ verified: boolean }>(url2.href, { attestationResponse, email });
+      if (resp2.verified) {
+        // Registration successful
+        console.log("Login successful");
+        // get id token
+      } else {
+        throw new Error("Login failed");
+      }
+    } catch (error) {
+      console.error(error);
+    }
+  };
+
+  const triggerPassKeyRegistration = async () => {
+    try {
+      const url = new URL(`${BACKEND_URL}/api/v2/webauthn-generate-registration-options`);
+      url.searchParams.append("email", email);
+      const resp = await get(url.href);
+      const attestationResponse = await startRegistration(resp);
+      const url2 = new URL(`${BACKEND_URL}/api/v2/webauthn-verify-registration`);
+      const resp2 = await post<{ verified: boolean }>(url2.href, { attestationResponse, email });
+      if (resp2.verified) {
+        // Registration successful
+        console.log("Registration successful");
+        // get id token
+      } else {
+        throw new Error("Registration failed");
+      }
     } catch (error) {
       console.error(error);
     }
@@ -100,8 +135,13 @@ function Login() {
         <br />
         <br />
         {isWebAuthnLoginEnabled && (
-          <button onClick={triggerPassKeysLogin} className="card">
-            Login with PassKeys
+          <button onClick={triggerPassKeyRegistration} className="card">
+            Register with PassKey
+          </button>
+        )}
+        {isWebAuthnLoginEnabled && (
+          <button onClick={triggerPassKeyLogin} className="card">
+            Login with PassKey
           </button>
         )}
         <br />
