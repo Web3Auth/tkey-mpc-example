@@ -110,7 +110,6 @@ function Auth() {
       let currentLoginResponse: TorusLoginResponse;
       if (loginType === "mock") {
         currentLoginResponse = await doMockLogin();
-        setLoginResponse(currentLoginResponse);
       } else if (loginType === "webauthn") {
         const loginHint = params.get("login_hint");
         const idToken = params.get("id_token");
@@ -141,13 +140,19 @@ function Auth() {
         const response = await (tKey.serviceProvider as TorusServiceProvider).directWeb.getRedirectResult();
         if (response.result) {
           currentLoginResponse = response.result as TorusLoginResponse;
-          setLoginResponse(currentLoginResponse);
         } else {
           console.error("Invalid login response", response);
         }
         uiConsole("This is the login response:", currentLoginResponse);
       }
+      if (currentLoginResponse) {
+        setLoginResponse(currentLoginResponse);
+        tKey.serviceProvider.postboxKey = new BN(currentLoginResponse.privateKey, "hex");
+        (tKey.serviceProvider as TorusServiceProvider).verifierName = currentLoginResponse.userInfo.verifier;
+        (tKey.serviceProvider as TorusServiceProvider).verifierId = currentLoginResponse.userInfo.verifierId;
+      }
     }
+
     console.log("current hash", location.hash);
     if (location.hash) getKeys();
     else {
@@ -158,6 +163,7 @@ function Auth() {
   // Initialize TKey
   useEffect(() => {
     async function initializeTKey() {
+      // debugger;
       setOAuthShare(new BN(loginResponse.privateKey, 16));
 
       const signatures = loginResponse.signatures.filter((sign) => sign !== null);
