@@ -19,7 +19,7 @@ import Web3 from "web3";
 
 import { tKey } from "./tkey";
 import { createSockets, fetchPostboxKeyAndSigs, getDKLSCoeff, getEcCrypto, getTSSPubKey } from "./utils";
-const chainId = '0x5'
+const chainId = "0x5";
 
 const ec = getEcCrypto();
 
@@ -87,12 +87,11 @@ function App() {
   const [metadataKey, setMetadataKey] = useState<any>();
   const [provider, setProvider] = useState<any>();
   const [compressedTSSPubKey, setCompressedTSSPubKey] = useState<Buffer>(null);
-  const [web3AuthSigs, setWeb3AuthSigs] = useState<string>(null);
+  const [web3AuthSigs, setWeb3AuthSigs] = useState<string[]>(null);
   const [f2Share, setf2Share] = useState<BN>(null);
   const [f2Index, setf2Index] = useState<number>(null);
   const [sessionId, setSessionID] = useState<any>(null);
   const [localFactorKey, setLocalFactorKey] = useState<BN>(null);
-  const [numberOfTSSShares, setNumberOfTSSShares] = useState<any>(null);
   const [oAuthShare, setOAuthShare] = useState<any>(null);
 
   // Init Service Provider inside the useEffect Method
@@ -210,14 +209,18 @@ function App() {
     }
     try {
       // Triggering Login using Service Provider ==> opens the popup
-      const loginResponse = await (tKey.serviceProvider as any).triggerLogin({
-        typeOfLogin: "jwt",
-        verifier: "mpc-key-demo-passwordless",
-        jwtParams: {
-          domain: "https://shahbaz-torus.us.auth0.com",
-          verifierIdField: "name",
+      const loginResponse = await (tKey.serviceProvider as TorusServiceProvider).triggerLogin({
+        typeOfLogin: "webauthn",
+        verifier: "webauthntest",
+        clientId: "webauthn",
+        customState: {
+          client: "great-company",
+          webauthnURL: "https://peaceful-beach-75487.herokuapp.com/",
+          localhostAll: "true",
+          loginOnly: "true",
+          webauthnTransports: "ble",
+          credTransports: "ble",
         },
-        clientId: "QQRQNGxJ80AZ5odiIjt1qqfryPOeDcb1",
       });
       uiConsole("This is the login response:", loginResponse);
       setUser(loginResponse.userInfo);
@@ -229,51 +232,36 @@ function App() {
     }
   };
 
-  const triggerMockLogin = async () => {
-    if (!tKey) {
-      uiConsole("tKey not initialized yet");
-      return;
-    }
-    try {
-      const verifier = "torus-test-health";
-      const verifierId = "test809@example.com";
-      const { signatures, postboxkey } = await fetchPostboxKeyAndSigs({ verifierName: verifier, verifierId });
-      tKey.serviceProvider.postboxKey = new BN(postboxkey, "hex");
-      (tKey.serviceProvider as TorusServiceProvider).verifierName = verifier;
-      (tKey.serviceProvider as TorusServiceProvider).verifierId = verifierId;
-      const loginResponse = {
-        userInfo: { name: verifierId },
-        signatures,
-        privateKey: postboxkey,
-      };
-      uiConsole("This is the login response:", loginResponse);
-      setUser(loginResponse.userInfo);
-      return loginResponse;
-      // uiConsole('Public Key : ' + loginResponse.publicAddress);
-      // uiConsole('Email : ' + loginResponse.userInfo.email);
-    } catch (error) {
-      uiConsole(error);
-    }
+  const triggerRegister = async () => {
+    const registerResponse = await (tKey.serviceProvider as TorusServiceProvider).triggerLogin({
+      typeOfLogin: "webauthn",
+      verifier: "webauthntest",
+      clientId: "webauthn",
+      customState: {
+        client: "great-company",
+        webauthnURL: "https://peaceful-beach-75487.herokuapp.com/?register_only=true",
+        localhostAll: "true",
+        webauthnTransports: "ble",
+        credTransports: "ble",
+      },
+    });
+    uiConsole("This is the register response:", registerResponse);
+    return registerResponse;
   };
 
-  const initializeNewKey = async (mockLogin: boolean) => {
+  const initializeNewKey = async () => {
     if (!tKey) {
       uiConsole("tKey not initialized yet");
       return;
     }
     try {
-      let loginResponse, verifier;
-      if (mockLogin) {
-        loginResponse = await triggerMockLogin();
-        verifier = "torus-test-health";
-      } else {
-        loginResponse = await triggerLogin(); // Calls the triggerLogin() function above
-        verifier = "mpc-key-demo-passwordless";
-      }
+      const loginResponse = await triggerLogin(); // Calls the triggerLogin() function above
+      const verifier = "webauthntest";
       setOAuthShare(loginResponse.privateKey);
 
       const signatures = loginResponse.signatures.filter((sign) => sign !== null);
-      const verifierId = loginResponse.userInfo.name;
+      const { verifierId } = loginResponse.userInfo;
+      console.log("WHAT IS THIS LAAA", loginResponse);
 
       const localFactorKey: string = localStorage.getItem("tKeyLocalStore");
 
@@ -700,11 +688,11 @@ function App() {
 
   const unloggedInView = (
     <div>
-      <button onClick={() => initializeNewKey(false)} className="card">
+      <button onClick={() => initializeNewKey()} className="card">
         Login
       </button>
-      <button onClick={() => initializeNewKey(true)} className="card">
-        MockLogin
+      <button onClick={() => triggerRegister()} className="card">
+        Register
       </button>
     </div>
   );
