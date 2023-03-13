@@ -6,16 +6,18 @@ import "./App.css";
 
 import { getPubKeyECC, getPubKeyPoint, Point, ShareStore } from "@tkey/common-types";
 import { TorusServiceProvider } from "@tkey/service-provider-torus";
+import { LOGIN, LoginWindowResponse, TorusVerifierResponse } from "@toruslabs/customauth";
+import { generatePrivate } from "@toruslabs/eccrypto";
 import { encrypt, randomSelection } from "@toruslabs/rss-client";
 import { Client } from "@toruslabs/tss-client";
 import * as tss from "@toruslabs/tss-lib";
+import type { SafeEventEmitterProvider } from "@web3auth-mpc/base";
 import { EthereumSigningProvider } from "@web3auth-mpc/ethereum-provider";
 import BN from "bn.js";
-import { generatePrivate } from "eccrypto";
 import keccak256 from "keccak256";
 import { useEffect, useState } from "react";
-// import swal from "sweetalert";
 import Web3 from "web3";
+import type { provider } from "web3-core";
 
 import { tKey } from "./tkey";
 import { createSockets, fetchPostboxKeyAndSigs, getDKLSCoeff, getEcCrypto, getTSSPubKey } from "./utils";
@@ -83,18 +85,17 @@ const generateTSSEndpoints = (parties: number, clientIndex: number) => {
 };
 
 function App() {
-  const [user, setUser] = useState<any>(null);
+  const [user, setUser] = useState<TorusVerifierResponse & LoginWindowResponse>(null);
   const [email, setEmail] = useState("");
-  const [metadataKey, setMetadataKey] = useState<any>();
-  const [provider, setProvider] = useState<any>();
+  const [metadataKey, setMetadataKey] = useState<string>("");
+  const [provider, setProvider] = useState<SafeEventEmitterProvider>();
   const [compressedTSSPubKey, setCompressedTSSPubKey] = useState<Buffer>(null);
   const [web3AuthSigs, setWeb3AuthSigs] = useState<string>(null);
   const [f2Share, setf2Share] = useState<BN>(null);
   const [f2Index, setf2Index] = useState<number>(null);
-  const [sessionId, setSessionID] = useState<any>(null);
+  const [sessionId, setSessionID] = useState<string>("");
   const [localFactorKey, setLocalFactorKey] = useState<BN>(null);
-  const [numberOfTSSShares, setNumberOfTSSShares] = useState<any>(null);
-  const [oAuthShare, setOAuthShare] = useState<any>(null);
+  const [oAuthShare, setOAuthShare] = useState<BN>(null);
 
   // Init Service Provider inside the useEffect Method
 
@@ -201,7 +202,7 @@ function App() {
         console.error(e);
       }
     };
-    ethProvider();
+    if (compressedTSSPubKey && web3AuthSigs.length > 0) ethProvider();
   }, [compressedTSSPubKey, web3AuthSigs]);
 
   const triggerLogin = async () => {
@@ -211,7 +212,7 @@ function App() {
     }
     try {
       // Triggering Login using Service Provider ==> opens the popup
-      const loginResponse = await (tKey.serviceProvider as any).triggerLogin({
+      const loginResponse = await (tKey.serviceProvider as TorusServiceProvider).triggerLogin({
         typeOfLogin: "jwt",
         verifier: "mpc-key-demo-passwordless",
         jwtParams: {
@@ -245,7 +246,7 @@ function App() {
       (tKey.serviceProvider as TorusServiceProvider).verifierName = verifier;
       (tKey.serviceProvider as TorusServiceProvider).verifierId = verifierId;
       const loginResponse = {
-        userInfo: { name: verifierId },
+        userInfo: { name: verifierId, email: "", verifierId, verifier, profileImage: "", typeOfLogin: LOGIN.JWT, accessToken: "", state: {} },
         signatures,
         privateKey: postboxkey,
       };
@@ -446,12 +447,10 @@ function App() {
 
   const getUserInfo = (): void => {
     uiConsole(user);
-    return user;
   };
 
   const getMetadataKey = (): void => {
     uiConsole(metadataKey);
-    return metadataKey;
   };
 
   const addNewTSSShareAndFactor = async (newFactorPub: Point, newFactorTSSIndex: number, inputFactorKey: BN) => {
@@ -548,7 +547,7 @@ function App() {
       console.log("provider not initialized yet");
       return;
     }
-    const web3 = new Web3(provider);
+    const web3 = new Web3(provider as provider);
     const chainId = await web3.eth.getChainId();
     uiConsole(chainId);
     return chainId;
@@ -559,7 +558,7 @@ function App() {
       console.log("provider not initialized yet");
       return;
     }
-    const web3 = new Web3(provider);
+    const web3 = new Web3(provider as provider);
     const address = (await web3.eth.getAccounts())[0];
     uiConsole(address);
     return address;
@@ -570,7 +569,7 @@ function App() {
       console.log("provider not initialized yet");
       return;
     }
-    const web3 = new Web3(provider);
+    const web3 = new Web3(provider as provider);
     const address = (await web3.eth.getAccounts())[0];
     const balance = web3.utils.fromWei(
       await web3.eth.getBalance(address) // Balance is in wei
@@ -584,7 +583,7 @@ function App() {
       console.log("provider not initialized yet");
       return;
     }
-    const web3 = new Web3(provider);
+    const web3 = new Web3(provider as provider);
     const fromAddress = (await web3.eth.getAccounts())[0];
     const originalMessage = [
       {
@@ -614,7 +613,7 @@ function App() {
       console.log("provider not initialized yet");
       return;
     }
-    const web3 = new Web3(provider);
+    const web3 = new Web3(provider as provider);
     const fromAddress = (await web3.eth.getAccounts())[0];
 
     const destination = "0x7aFac68875d2841dc16F1730Fba43974060b907A";

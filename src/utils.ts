@@ -1,7 +1,7 @@
 import TorusUtils from "@toruslabs/torus.js";
 import BN from "bn.js";
 import EC from "elliptic";
-import KJUR from "jsrsasign";
+import rs from "jsrsasign";
 import { io, Socket } from "socket.io-client";
 
 const torusNodeEndpoints = [
@@ -131,13 +131,12 @@ export const generateIdToken = (email) => {
   };
 
   const options = {
-    expiresIn: 120,
+    expiresIn: "120",
     algorithm: alg,
   };
 
   const header = { alg, typ: "JWT" };
-  // @ts-ignore
-  const token = KJUR.jws.JWS.sign(alg, header, payload, jwtPrivateKey, options);
+  const token = rs.KJUR.jws.JWS.sign(alg, header, payload, jwtPrivateKey, options);
 
   return token;
 };
