@@ -132,7 +132,6 @@ function Auth() {
   // Initialize TKey
   useEffect(() => {
     async function initializeTKey() {
-      debugger;
       setOAuthShare(new BN(loginResponse.privateKey, 16));
 
       const signatures = loginResponse.signatures.filter((sign) => sign !== null);
@@ -348,13 +347,12 @@ function Auth() {
     }
     const fromAddress = (await web3.eth.getAccounts())[0];
 
-    const destination = "0x7aFac68875d2841dc16F1730Fba43974060b907A";
     const amount = web3.utils.toWei("0.0001"); // Convert 1 ether to wei
 
     // Submit transaction to the blockchain and wait for it to be mined
     const receipt = await web3.eth.sendTransaction({
       from: fromAddress,
-      to: destination,
+      to: fromAddress,
       value: amount,
     });
     uiConsole(receipt);
