@@ -4,7 +4,7 @@
 /* eslint-disable no-throw-literal */
 import "./App.css";
 
-import { getPubKeyPoint, Point, ShareStore, getPubKeyECC } from "@tkey/common-types";
+import { getPubKeyECC, getPubKeyPoint, Point, ShareStore } from "@tkey/common-types";
 import TorusServiceProvider from "@tkey/service-provider-torus";
 import { ecPoint, encrypt, hexPoint, PointHex, randomSelection } from "@toruslabs/rss-client";
 import { Client } from "@toruslabs/tss-client";
@@ -97,8 +97,8 @@ function App() {
   // Init Service Provider inside the useEffect Method
 
   useEffect(() => {
-    const tKeyLocalStore = {factorKey: localFactorKey };
-    localStorage.setItem("tKeyLocalStore", JSON.stringify(tKeyLocalStore));
+    if (!localFactorKey) return;
+    localStorage.setItem("tKeyLocalStore", localFactorKey.toString("hex"));
   }, [localFactorKey]);
 
   useEffect(() => {
@@ -274,31 +274,56 @@ function App() {
       const signatures = loginResponse.signatures.filter((sign) => sign !== null);
       const verifierId = loginResponse.userInfo.name;
 
-      let tKeyLocalStore = JSON.parse(localStorage.getItem("tKeyLocalStore"));
-      let factorKey:BN;
-      if (!tKeyLocalStore.factorKey) {
+      const localFactorKey: string = localStorage.getItem("tKeyLocalStore");
+
+      // Right not we're depending on if local storage exists to tell us if
+      // user is new or existing. TODO: change to depend on intiialize, then rehydrate
+      let factorKey: BN;
+      let deviceTSSShare: BN;
+      let deviceTSSIndex: number;
+      let exisitingUser: boolean = false;
+      let metadataDeviceShare: ShareStore;
+      if (!localFactorKey) {
         factorKey = new BN(generatePrivate());
-        uiConsole("factorKey generated!!!!!!!!!!!!!!!!!!!!", factorKey);
+        deviceTSSShare = new BN(generatePrivate());
+        deviceTSSIndex = 2;
       } else {
-        factorKey = new BN(tKeyLocalStore.factorKey);
-        uiConsole("factorKey not generated", factorKey);
+        factorKey = new BN(localFactorKey, "hex");
+        const factorKeyMetadata = await tKey.storageLayer.getMetadata<{
+          message: string;
+        }>({
+          privKey: factorKey,
+        });
+        if (factorKeyMetadata.message === 'KEY_NOT_FOUND') {
+          throw new Error('no metadata for your factor key, reset your account');
+        }
+          const metadataShare: FactorKeyCloudMetadata = JSON.parse(factorKeyMetadata.message);
+    
+          if (!metadataShare.deviceShare || !metadataShare.tssShare)
+            throw new Error('Invalid data from metadata');
+          // if (!this.tKey) throw new Error('tkey unavailable');
+          metadataDeviceShare = metadataShare.deviceShare;
+          exisitingUser = true;
       }
-      setLocalFactorKey(factorKey);
 
       const factorPub = getPubKeyPoint(factorKey);
 
-      const deviceTSSShare = new BN(generatePrivate());
-      const deviceTSSIndex = 3;
-
       // Initialization of tKey
-      await tKey.initialize({ useTSS: true, factorPub, deviceTSSShare, deviceTSSIndex });
-
-      // Gets the deviceShare
-      try {
-        await (tKey.modules.webStorage as any).inputShareFromWebStorage(); // 2/2 flow
-      } catch (e) {
-        uiConsole(e);
+      if (exisitingUser) {
+        await tKey.initialize({ neverInitializeNewKey: true });
+        await this.tKey.inputShareStoreSafe(metadataDeviceShare, true);
+        await this.tKey.reconstructKey();
+      } else {
+        await tKey.initialize({ useTSS: true, factorPub, deviceTSSShare, deviceTSSIndex });
       }
+
+
+      // // Gets the deviceShare
+      // try {
+      //   await (tKey.modules.webStorage as any).inputShareFromWebStorage(); // 2/2 flow
+      // } catch (e) {
+      //   uiConsole(e);
+      // }
 
       // Checks the requiredShares to reconstruct the tKey,
       // starts from 2 by default and each of the above share reduce it by one.
@@ -326,8 +351,9 @@ function App() {
       const vid = `${verifier}${DELIMITERS.Delimiter1}${verifierId}`;
 
       // 5. save factor key and other metadata
-      await addFactorKeyMetadata(deviceTSSShare, deviceTSSShare, deviceTSSIndex, "local storage key")
+      await addFactorKeyMetadata(factorKey, factor2Share, factor2Index, "local storage key");
       await tKey.syncLocalMetadataTransitions();
+      setLocalFactorKey(factorKey);
       setSessionID(`${vid}${DELIMITERS.Delimiter2}default${DELIMITERS.Delimiter3}${tssNonce}${DELIMITERS.Delimiter4}`);
       setf2Share(factor2Share);
       setf2Index(factor2Index);
@@ -355,7 +381,7 @@ function App() {
     }
   };
 
-  const  fetchDeviceShareFromTkey = async () => {
+  const fetchDeviceShareFromTkey = async () => {
     if (!tKey) {
       uiConsole("tKey not initialized yet");
       return;
@@ -364,10 +390,10 @@ function App() {
       const polyId = tKey.metadata.getLatestPublicPolynomial().getPolynomialID();
       const shares = tKey.shares[polyId];
       let deviceShare: ShareStore;
-      // eslint-disable-next-line guard-for-in
+
       for (const shareIndex in shares) {
-        if (shareIndex !== '1') {
-          deviceShare = shares[shareIndex] ;
+        if (shareIndex !== "1") {
+          deviceShare = shares[shareIndex];
         }
       }
       return deviceShare;
@@ -375,7 +401,7 @@ function App() {
       uiConsole({ err });
       throw new Error(err);
     }
-  }
+  };
 
   const addFactorKeyMetadata = async (factorKey: BN, tssShare: BN, tssIndex: number, factorKeyDescription: string) => {
     if (!tKey) {
@@ -384,12 +410,12 @@ function App() {
     }
     const { requiredShares } = tKey.getKeyDetails();
     if (requiredShares > 0) {
-      uiConsole("not enough shares for metadata key")
+      uiConsole("not enough shares for metadata key");
     }
 
     const metadataDeviceShare = await fetchDeviceShareFromTkey();
- 
-    const factorIndex = getPubKeyECC(factorKey).toString('hex');
+
+    const factorIndex = getPubKeyECC(factorKey).toString("hex");
     const metadataToSet: FactorKeyCloudMetadata = {
       deviceShare: metadataDeviceShare,
       tssShare,
