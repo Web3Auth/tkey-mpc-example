@@ -531,6 +531,7 @@ function App() {
 
   const resetAccount = async () => {
     try {
+      localStorage.removeItem("tKeyLocalStore");
       await tKey.storageLayer.setMetadata({
         privKey: oAuthShare,
         input: { message: "KEY_NOT_FOUND" },
