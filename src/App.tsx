@@ -19,6 +19,7 @@ import Web3 from "web3";
 
 import { tKey } from "./tkey";
 import { createSockets, fetchPostboxKeyAndSigs, getDKLSCoeff, getEcCrypto, getTSSPubKey } from "./utils";
+const chainId = '0x5'
 
 const ec = getEcCrypto();
 
@@ -181,7 +182,7 @@ function App() {
             signatures: web3AuthSigs,
           });
           await client.cleanup(tss, { signatures: web3AuthSigs, server_coeffs: serverCoeffs });
-          return { v: recoveryParam + 27, r: Buffer.from(r.toString("hex"), "hex"), s: Buffer.from(s.toString("hex"), "hex") };
+          return { v: recoveryParam, r: Buffer.from(r.toString("hex"), "hex"), s: Buffer.from(s.toString("hex"), "hex") };
         };
 
         if (!compressedTSSPubKey) {
@@ -235,7 +236,7 @@ function App() {
     }
     try {
       const verifier = "torus-test-health";
-      const verifierId = "test80@example.com";
+      const verifierId = "test809@example.com";
       const { signatures, postboxkey } = await fetchPostboxKeyAndSigs({ verifierName: verifier, verifierId });
       tKey.serviceProvider.postboxKey = new BN(postboxkey, "hex");
       (tKey.serviceProvider as TorusServiceProvider).verifierName = verifier;
@@ -281,7 +282,7 @@ function App() {
       let factorKey: BN;
       let deviceTSSShare: BN;
       let deviceTSSIndex: number;
-      let exisitingUser = false;
+      let existingUser = false;
       let metadataDeviceShare: ShareStore;
       if (!localFactorKey) {
         factorKey = new BN(generatePrivate());
@@ -301,12 +302,12 @@ function App() {
 
         if (!metadataShare.deviceShare || !metadataShare.tssShare) throw new Error("Invalid data from metadata");
         metadataDeviceShare = metadataShare.deviceShare;
-        exisitingUser = true;
+        existingUser = true;
       }
 
       const factorPub = getPubKeyPoint(factorKey);
       // Initialization of tKey
-      if (exisitingUser) {
+      if (existingUser) {
         await tKey.initialize({ neverInitializeNewKey: true });
         await tKey.inputShareStoreSafe(metadataDeviceShare, true);
         await tKey.reconstructKey();
@@ -340,7 +341,6 @@ function App() {
       const vid = `${verifier}${DELIMITERS.Delimiter1}${verifierId}`;
 
       // 5. save factor key and other metadata
-      debugger;
       await addFactorKeyMetadata(factorKey, factor2Share, factor2Index, "local storage key");
       await tKey.syncLocalMetadataTransitions();
       setLocalFactorKey(factorKey);
@@ -622,8 +622,6 @@ function App() {
       from: fromAddress,
       to: destination,
       value: amount,
-      maxPriorityFeePerGas: "5000000000", // Max priority fee per gas
-      maxFeePerGas: "6000000000000", // Max fee per gas
     });
     uiConsole(receipt);
   };
