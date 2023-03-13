@@ -4,7 +4,7 @@
 /* eslint-disable no-throw-literal */
 import "./App.css";
 
-import { getPubKeyPoint, Point, ShareStore, getPubKeyECC } from "@tkey/common-types";
+import { getPubKeyECC, getPubKeyPoint, Point, ShareStore } from "@tkey/common-types";
 import TorusServiceProvider from "@tkey/service-provider-torus";
 import { ecPoint, encrypt, hexPoint, PointHex, randomSelection } from "@toruslabs/rss-client";
 import { Client } from "@toruslabs/tss-client";
@@ -97,8 +97,8 @@ function App() {
   // Init Service Provider inside the useEffect Method
 
   useEffect(() => {
-    const tKeyLocalStore = {factorKey: localFactorKey };
-    localStorage.setItem("tKeyLocalStore", JSON.stringify(tKeyLocalStore));
+    if (!localFactorKey) return;
+    localStorage.setItem("tKeyLocalStore", localFactorKey.toString("hex"));
   }, [localFactorKey]);
 
   useEffect(() => {
@@ -274,14 +274,16 @@ function App() {
       const signatures = loginResponse.signatures.filter((sign) => sign !== null);
       const verifierId = loginResponse.userInfo.name;
 
-      let tKeyLocalStore = JSON.parse(localStorage.getItem("tKeyLocalStore"));
-      let factorKey:BN;
-      if (!tKeyLocalStore.factorKey) {
+      const localFactorKey: string = localStorage.getItem("tKeyLocalStore");
+
+      let factorKey: BN;
+      if (!localFactorKey) {
         factorKey = new BN(generatePrivate());
         uiConsole("factorKey generated!!!!!!!!!!!!!!!!!!!!", factorKey);
       } else {
-        factorKey = new BN(tKeyLocalStore.factorKey);
-        uiConsole("factorKey not generated", factorKey);
+        uiConsole("factorKey not generated!!!!!!!!!!!!!!!!!", localFactorKey);
+        factorKey = new BN(localFactorKey, "hex");
+        uiConsole("factorKey not generated!!!!!!!!!!!!!!!!!", factorKey);
       }
       setLocalFactorKey(factorKey);
 
@@ -353,7 +355,7 @@ function App() {
     }
   };
 
-  const  fetchDeviceShareFromTkey = async () => {
+  const fetchDeviceShareFromTkey = async () => {
     if (!tKey) {
       uiConsole("tKey not initialized yet");
       return;
@@ -362,10 +364,10 @@ function App() {
       const polyId = tKey.metadata.getLatestPublicPolynomial().getPolynomialID();
       const shares = tKey.shares[polyId];
       let deviceShare: ShareStore;
-      // eslint-disable-next-line guard-for-in
+
       for (const shareIndex in shares) {
-        if (shareIndex !== '1') {
-          deviceShare = shares[shareIndex] ;
+        if (shareIndex !== "1") {
+          deviceShare = shares[shareIndex];
         }
       }
       return deviceShare;
@@ -373,7 +375,7 @@ function App() {
       uiConsole({ err });
       throw new Error(err);
     }
-  }
+  };
 
   const addFactorKeyMetadata = async (factorKey: BN, tssShare: BN, tssIndex: number) => {
     if (!tKey) {
@@ -382,12 +384,12 @@ function App() {
     }
     const { requiredShares } = tKey.getKeyDetails();
     if (requiredShares > 0) {
-      uiConsole("not enough shares for metadata key")
+      uiConsole("not enough shares for metadata key");
     }
 
     const metadataDeviceShare = await fetchDeviceShareFromTkey();
- 
-    const factorIndex = getPubKeyECC(factorKey).toString('hex');
+
+    const factorIndex = getPubKeyECC(factorKey).toString("hex");
     const metadataToSet: FactorKeyCloudMetadata = {
       deviceShare: metadataDeviceShare,
       tssShare,
@@ -399,9 +401,7 @@ function App() {
       input: [{ message: JSON.stringify(metadataToSet) }],
       privKey: [factorKey],
     });
-  }
-
-
+  };
 
   const keyDetails = async () => {
     if (!tKey) {
