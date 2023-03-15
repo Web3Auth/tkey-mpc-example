@@ -99,8 +99,10 @@ function Auth() {
   // Updates factor key
   useEffect(() => {
     if (!localFactorKey) return;
-    localStorage.setItem("tKeyLocalStore", localFactorKey.toString("hex"));
-  }, [localFactorKey]);
+    const localStore: Record<string, string> = JSON.parse(localStorage.getItem("tkeyLocalMap") || "{}");
+    localStore[loginResponse.userInfo.name] = localFactorKey.toString("hex");
+    localStorage.setItem("tkeyLocalMap", JSON.stringify(localStore));
+  }, [localFactorKey, loginResponse]);
 
   // Gets the OAuth response
   useEffect(() => {
@@ -169,7 +171,9 @@ function Auth() {
       const signatures = loginResponse.signatures.filter((sign) => sign !== null);
       const verifierId = loginResponse.userInfo.name;
 
-      const currentFactorKey: string = localStorage.getItem("tKeyLocalStore");
+      const localData: Record<string, string> = JSON.parse(localStorage.getItem("tKeyLocalMap") || "{}");
+      const currentFactorKey: string | undefined = localData[verifierId];
+
 
       // Right not we're depending on if local storage exists to tell us if
       // user is new or existing. TODO: change to depend on intiialize, then rehydrate
@@ -299,7 +303,7 @@ function Auth() {
 
   const resetAccount = async () => {
     try {
-      localStorage.removeItem("tKeyLocalStore");
+      localStorage.removeItem("tkeyLocalMap");
       await tKey.storageLayer.setMetadata({
         privKey: oAuthShare,
         input: { message: "KEY_NOT_FOUND" },
