@@ -1,8 +1,9 @@
-import { getPubKeyECC, getPubKeyPoint, ShareStore } from "@tkey/common-types";
+/* eslint-disable @typescript-eslint/no-use-before-define */
+import { getPubKeyECC, getPubKeyPoint, Point, ShareStore } from "@tkey/common-types";
 import { TorusServiceProvider } from "@tkey/service-provider-torus";
-import { LOGIN, LoginWindowResponse, TorusLoginResponse, TorusVerifierResponse } from "@toruslabs/customauth";
+import { LOGIN, LoginWindowResponse, TorusVerifierResponse } from "@toruslabs/customauth";
 import { generatePrivate } from "@toruslabs/eccrypto";
-import { ecCurve } from "@toruslabs/rss-client";
+import { ecCurve, encrypt, randomSelection } from "@toruslabs/rss-client";
 import { generateAddressFromPrivKey } from "@toruslabs/torus.js";
 import BN from "bn.js";
 import { useEffect, useState } from "react";
@@ -23,7 +24,7 @@ async function doMockLogin() {
   tKey.serviceProvider.postboxKey = new BN(postboxkey, "hex");
   (tKey.serviceProvider as TorusServiceProvider).verifierName = verifier;
   (tKey.serviceProvider as TorusServiceProvider).verifierId = verifierId;
-  const loginResponse: TorusLoginResponse = {
+  const loginResponse: any = {
     userInfo: { name: verifierId, email: "", verifierId, verifier, profileImage: "", typeOfLogin: LOGIN.JWT, accessToken: "", state: {} },
     signatures,
     privateKey: postboxkey,
@@ -86,7 +87,7 @@ function Auth() {
   const navigate = useNavigate();
 
   const [user, setUser] = useState<TorusVerifierResponse & LoginWindowResponse>(null);
-  const [loginResponse, setLoginResponse] = useState<TorusLoginResponse>(null);
+  const [loginResponse, setLoginResponse] = useState<any>(null);
   const [oAuthShare, setOAuthShare] = useState<BN>();
   const [compressedTSSPubKey, setCompressedTSSPubKey] = useState<Buffer>(null);
   const [web3AuthSigs, setWeb3AuthSigs] = useState<string[]>([]);
@@ -109,7 +110,7 @@ function Auth() {
     async function getKeys() {
       const params = new URLSearchParams(location.hash.slice(1));
       const loginType = params.get("type");
-      let currentLoginResponse: TorusLoginResponse;
+      let currentLoginResponse: any;
       if (loginType === "mock") {
         currentLoginResponse = await doMockLogin();
       } else if (loginType === "webauthn") {
@@ -141,13 +142,14 @@ function Auth() {
       } else {
         const response = await (tKey.serviceProvider as TorusServiceProvider).directWeb.getRedirectResult();
         if (response.result) {
-          currentLoginResponse = response.result as TorusLoginResponse;
+          currentLoginResponse = response.result as any;
         } else {
           console.error("Invalid login response", response);
         }
         uiConsole("This is the login response:", currentLoginResponse);
       }
       if (currentLoginResponse) {
+        setUser(currentLoginResponse.userInfo);
         setLoginResponse(currentLoginResponse);
         tKey.serviceProvider.postboxKey = new BN(currentLoginResponse.privateKey, "hex");
         (tKey.serviceProvider as TorusServiceProvider).verifierName = currentLoginResponse.userInfo.verifier;
@@ -165,104 +167,107 @@ function Auth() {
   // Initialize TKey
   useEffect(() => {
     async function initializeTKey() {
-      // debugger;
-      setOAuthShare(new BN(loginResponse.privateKey, 16));
+      try {
+        setOAuthShare(new BN(loginResponse.privateKey, 16));
 
-      const signatures = loginResponse.signatures.filter((sign) => sign !== null);
-      const verifierId = loginResponse.userInfo.name;
+        const signatures = loginResponse.signatures.filter((sign) => sign !== null);
+        const verifierId = loginResponse.userInfo.name;
 
-      const localData: Record<string, string> = JSON.parse(localStorage.getItem("tKeyLocalMap") || "{}");
-      const currentFactorKey: string | undefined = localData[verifierId];
+        const localData: Record<string, string> = JSON.parse(localStorage.getItem("tKeyLocalMap") || "{}");
+        const currentFactorKey: string | undefined = localData[verifierId];
 
+        // Right not we're depending on if local storage exists to tell us if
+        // user is new or existing. TODO: change to depend on intiialize, then rehydrate
+        let factorKey: BN;
+        let deviceTSSShare: BN;
+        let deviceTSSIndex: number;
+        let existingUser = false;
+        let metadataDeviceShare: ShareStore;
+        if (!currentFactorKey) {
+          factorKey = new BN(generatePrivate());
+          deviceTSSShare = new BN(generatePrivate());
+          deviceTSSIndex = 2;
+        } else {
+          factorKey = new BN(currentFactorKey, "hex");
+          const factorKeyMetadata = await tKey.storageLayer.getMetadata<{
+            message: string;
+          }>({
+            privKey: factorKey,
+          });
+          if (factorKeyMetadata.message === "KEY_NOT_FOUND") {
+            throw new Error("no metadata for your factor key, reset your account");
+          }
+          const metadataShare: FactorKeyCloudMetadata = JSON.parse(factorKeyMetadata.message);
 
-      // Right not we're depending on if local storage exists to tell us if
-      // user is new or existing. TODO: change to depend on intiialize, then rehydrate
-      let factorKey: BN;
-      let deviceTSSShare: BN;
-      let deviceTSSIndex: number;
-      let existingUser = false;
-      let metadataDeviceShare: ShareStore;
-      if (!currentFactorKey) {
-        factorKey = new BN(generatePrivate());
-        deviceTSSShare = new BN(generatePrivate());
-        deviceTSSIndex = 2;
-      } else {
-        factorKey = new BN(currentFactorKey, "hex");
-        const factorKeyMetadata = await tKey.storageLayer.getMetadata<{
-          message: string;
-        }>({
-          privKey: factorKey,
-        });
-        if (factorKeyMetadata.message === "KEY_NOT_FOUND") {
-          throw new Error("no metadata for your factor key, reset your account");
+          if (!metadataShare.deviceShare || !metadataShare.tssShare) throw new Error("Invalid data from metadata");
+          metadataDeviceShare = metadataShare.deviceShare;
+          existingUser = true;
         }
-        const metadataShare: FactorKeyCloudMetadata = JSON.parse(factorKeyMetadata.message);
 
-        if (!metadataShare.deviceShare || !metadataShare.tssShare) throw new Error("Invalid data from metadata");
-        metadataDeviceShare = metadataShare.deviceShare;
-        existingUser = true;
+        const factorPub = getPubKeyPoint(factorKey);
+        // Initialization of tKey
+        if (existingUser) {
+          await tKey.initialize({ neverInitializeNewKey: true });
+          await tKey.inputShareStoreSafe(metadataDeviceShare, true);
+          // await tKey.reconstructKey();
+        } else {
+          await tKey.initialize({ useTSS: true, factorPub, deviceTSSShare, deviceTSSIndex });
+        }
+
+        // Checks the requiredShares to reconstruct the tKey,
+        // starts from 2 by default and each of the above share reduce it by one.
+        const { requiredShares } = tKey.getKeyDetails();
+        if (requiredShares > 0) {
+          throw new Error(`Threshold not met. Required Share: ${requiredShares}. You should reset your account.`);
+        }
+        // 2. Reconstruct the Metadata Key
+        const metadataKey = await tKey.reconstructKey();
+
+        const tssNonce = tKey.metadata.tssNonces[tKey.tssTag];
+        const factor1PubKeyDetails = await tKey.serviceProvider.getTSSPubKey(tKey.tssTag, tssNonce);
+        const factor1PubKey = { x: factor1PubKeyDetails.x.toString("hex"), y: factor1PubKeyDetails.y.toString("hex") };
+
+        const { tssShare: factor2Share, tssIndex: factor2Index } = await tKey.getTSSShare(factorKey);
+
+        // 3. get user's tss share from tkey.
+        const factor2ECPK = ec.curve.g.mul(factor2Share);
+        const factor2PubKey = { x: factor2ECPK.getX().toString("hex"), y: factor2ECPK.getY().toString("hex") };
+
+        // 4. derive tss pub key, tss pubkey is implicitly formed using the dkgPubKey and the userShare (as well as userTSSIndex)
+        const tssPubKey = getTSSPubKey(factor1PubKey, factor2PubKey, factor2Index);
+        const compressedTSSPubKey = Buffer.from(`${tssPubKey.getX().toString(16, 64)}${tssPubKey.getY().toString(16, 64)}`, "hex");
+        const vid = `${loginResponse.userInfo.verifier}${DELIMITERS.Delimiter1}${verifierId}`;
+
+        // 5. save factor key and other metadata
+        await addFactorKeyMetadata(factorKey, factor2Share, factor2Index, "local storage key");
+        await tKey.syncLocalMetadataTransitions();
+        setLocalFactorKey(factorKey);
+        setSessionID(`${vid}${DELIMITERS.Delimiter2}default${DELIMITERS.Delimiter3}${tssNonce}${DELIMITERS.Delimiter4}`);
+        setf2Share(factor2Share);
+        setf2Index(factor2Index);
+        setCompressedTSSPubKey(compressedTSSPubKey);
+        setWeb3AuthSigs(signatures);
+        console.log("PRINTS HERE");
+        console.log(factor2Share);
+        console.log(factor2Index);
+        console.log(compressedTSSPubKey);
+        console.log(signatures);
+
+        uiConsole(
+          "Successfully logged in & initialised MPC TKey SDK",
+          "TSS Public Key: ",
+          tssPubKey,
+          "Factor 1 Public Key",
+          factor1PubKey,
+          "Factor 2 Public Key",
+          factor2PubKey,
+          "Metadata Key",
+          metadataKey.privKey.toString("hex")
+        );
+      } catch (e) {
+        console.error(e);
+        uiConsole(`Error in initializing TKey ${e}`);
       }
-
-      const factorPub = getPubKeyPoint(factorKey);
-      // Initialization of tKey
-      if (existingUser) {
-        await tKey.initialize({ neverInitializeNewKey: true });
-        await tKey.inputShareStoreSafe(metadataDeviceShare, true);
-        // await tKey.reconstructKey();
-      } else {
-        await tKey.initialize({ useTSS: true, factorPub, deviceTSSShare, deviceTSSIndex });
-      }
-
-      // Checks the requiredShares to reconstruct the tKey,
-      // starts from 2 by default and each of the above share reduce it by one.
-      const { requiredShares } = tKey.getKeyDetails();
-      if (requiredShares > 0) {
-        throw new Error(`Threshold not met. Required Share: ${requiredShares}. You should reset your account.`);
-      }
-      // 2. Reconstruct the Metadata Key
-      const metadataKey = await tKey.reconstructKey();
-
-      const tssNonce = tKey.metadata.tssNonces[tKey.tssTag];
-      const factor1PubKeyDetails = await tKey.serviceProvider.getTSSPubKey(tKey.tssTag, tssNonce);
-      const factor1PubKey = { x: factor1PubKeyDetails.x.toString("hex"), y: factor1PubKeyDetails.y.toString("hex") };
-
-      const { tssShare: factor2Share, tssIndex: factor2Index } = await tKey.getTSSShare(factorKey);
-
-      // 3. get user's tss share from tkey.
-      const factor2ECPK = ec.curve.g.mul(factor2Share);
-      const factor2PubKey = { x: factor2ECPK.getX().toString("hex"), y: factor2ECPK.getY().toString("hex") };
-
-      // 4. derive tss pub key, tss pubkey is implicitly formed using the dkgPubKey and the userShare (as well as userTSSIndex)
-      const tssPubKey = getTSSPubKey(factor1PubKey, factor2PubKey, factor2Index);
-      const compressedTSSPubKey = Buffer.from(`${tssPubKey.getX().toString(16, 64)}${tssPubKey.getY().toString(16, 64)}`, "hex");
-      const vid = `${loginResponse.userInfo.verifier}${DELIMITERS.Delimiter1}${verifierId}`;
-
-      // 5. save factor key and other metadata
-      await addFactorKeyMetadata(factorKey, factor2Share, factor2Index, "local storage key");
-      await tKey.syncLocalMetadataTransitions();
-      setLocalFactorKey(factorKey);
-      setSessionID(`${vid}${DELIMITERS.Delimiter2}default${DELIMITERS.Delimiter3}${tssNonce}${DELIMITERS.Delimiter4}`);
-      setf2Share(factor2Share);
-      setf2Index(factor2Index);
-      setCompressedTSSPubKey(compressedTSSPubKey);
-      setWeb3AuthSigs(signatures);
-      console.log("PRINTS HERE");
-      console.log(factor2Share);
-      console.log(factor2Index);
-      console.log(compressedTSSPubKey);
-      console.log(signatures);
-
-      uiConsole(
-        "Successfully logged in & initialised MPC TKey SDK",
-        "TSS Public Key: ",
-        tssPubKey,
-        "Factor 1 Public Key",
-        factor1PubKey,
-        "Factor 2 Public Key",
-        factor2PubKey,
-        "Metadata Key",
-        metadataKey.privKey.toString("hex")
-      );
     }
     if (loginResponse) initializeTKey();
   }, [loginResponse]);
@@ -278,13 +283,151 @@ function Auth() {
     }
   }, [compressedTSSPubKey, web3AuthSigs]);
 
+  const copyTSSShareIntoManualBackupFactorkey = async () => {
+    try {
+      if (!tKey) {
+        throw new Error("tkey does not exist, cannot add factor pub");
+      }
+      if (!localFactorKey) {
+        throw new Error("localFactorKey does not exist, cannot add factor pub");
+      }
+
+      const backupFactorKey = new BN(generatePrivate());
+      const backupFactorPub = getPubKeyPoint(backupFactorKey);
+
+      await copyExistingTSSShareForNewFactor(backupFactorPub, 2, localFactorKey);
+
+      const { tssShare: tssShare2, tssIndex: tssIndex2 } = await tKey.getTSSShare(localFactorKey);
+      await addFactorKeyMetadata(backupFactorKey, tssShare2, tssIndex2, "manual share");
+
+      await tKey.syncLocalMetadataTransitions();
+      uiConsole(` 
+      Successfully created manual backup
+      Manual Backup Factor: ${backupFactorKey.toString("hex")}`);
+    } catch (err) {
+      uiConsole(`Failed to create new manual factor ${err}`);
+    }
+  };
+
+  const createNewTSSShareIntoManualBackupFactorkey = async () => {
+    try {
+      if (!tKey) {
+        throw new Error("tkey does not exist, cannot add factor pub");
+      }
+      if (!localFactorKey) {
+        throw new Error("localFactorKey does not exist, cannot add factor pub");
+      }
+
+      const backupFactorKey = new BN(generatePrivate());
+      const backupFactorPub = getPubKeyPoint(backupFactorKey);
+
+      await addNewTSSShareAndFactor(backupFactorPub, 3, localFactorKey);
+
+      const { tssShare: tssShare2, tssIndex: tssIndex2 } = await tKey.getTSSShare(localFactorKey);
+      await addFactorKeyMetadata(backupFactorKey, tssShare2, tssIndex2, "manual share");
+
+      await tKey.syncLocalMetadataTransitions();
+      uiConsole(` 
+      Successfully created manual backup
+      Manual Backup Factor: ${backupFactorKey.toString("hex")}`);
+    } catch (err) {
+      uiConsole(`Failed to create new manual factor ${err}`);
+    }
+  };
+
+  const addNewTSSShareAndFactor = async (newFactorPub: Point, newFactorTSSIndex: number, factorKeyForExistingTSSShare: BN) => {
+    if (!tKey) {
+      throw new Error("tkey does not exist, cannot add factor pub");
+    }
+    if (!localFactorKey) {
+      throw new Error("localFactorKey does not exist, cannot add factor pub");
+    }
+    if (newFactorTSSIndex !== 2 && newFactorTSSIndex !== 3) {
+      throw new Error("tssIndex must be 2 or 3");
+    }
+    if (!tKey.metadata.factorPubs || !Array.isArray(tKey.metadata.factorPubs[tKey.tssTag])) {
+      throw new Error("factorPubs does not exist");
+    }
+
+    const existingFactorPubs = tKey.metadata.factorPubs[tKey.tssTag].slice();
+    const updatedFactorPubs = existingFactorPubs.concat([newFactorPub]);
+    const existingTSSIndexes = existingFactorPubs.map((fb) => tKey.getFactorEncs(fb).tssIndex);
+    const updatedTSSIndexes = existingTSSIndexes.concat([newFactorTSSIndex]);
+    const { tssShare, tssIndex } = await tKey.getTSSShare(factorKeyForExistingTSSShare);
+
+    tKey.metadata.addTSSData({
+      tssTag: tKey.tssTag,
+      factorPubs: updatedFactorPubs,
+    });
+
+    const rssNodeDetails = await tKey._getRssNodeDetails();
+    const { serverEndpoints, serverPubKeys, serverThreshold } = rssNodeDetails;
+    const randomSelectedServers = randomSelection(
+      new Array(rssNodeDetails.serverEndpoints.length).fill(null).map((_, i) => i + 1),
+      Math.ceil(rssNodeDetails.serverEndpoints.length / 2)
+    );
+
+    const verifierNameVerifierId = tKey.serviceProvider.getVerifierNameVerifierId();
+    await tKey._refreshTSSShares(true, tssShare, tssIndex, updatedFactorPubs, updatedTSSIndexes, verifierNameVerifierId, {
+      selectedServers: randomSelectedServers,
+      serverEndpoints,
+      serverPubKeys,
+      serverThreshold,
+      authSignatures: web3AuthSigs,
+    });
+  };
+
+  const copyExistingTSSShareForNewFactor = async (newFactorPub: Point, newFactorTSSIndex: number, factorKeyForExistingTSSShare: BN) => {
+    if (!tKey) {
+      throw new Error("tkey does not exist, cannot copy factor pub");
+    }
+    if (newFactorTSSIndex !== 2 && newFactorTSSIndex !== 3) {
+      throw new Error("input factor tssIndex must be 2 or 3");
+    }
+    if (!tKey.metadata.factorPubs || !Array.isArray(tKey.metadata.factorPubs[tKey.tssTag])) {
+      throw new Error("factorPubs does not exist, failed in copy factor pub");
+    }
+    if (!tKey.metadata.factorEncs || typeof tKey.metadata.factorEncs[tKey.tssTag] !== "object") {
+      throw new Error("factorEncs does not exist, failed in copy factor pub");
+    }
+
+    const existingFactorPubs = tKey.metadata.factorPubs[tKey.tssTag].slice();
+    const updatedFactorPubs = existingFactorPubs.concat([newFactorPub]);
+    const { tssShare, tssIndex } = await tKey.getTSSShare(factorKeyForExistingTSSShare);
+    if (tssIndex !== newFactorTSSIndex) {
+      throw new Error("retrieved tssIndex does not match input factor tssIndex");
+    }
+    const factorEncs = JSON.parse(JSON.stringify(tKey.metadata.factorEncs[tKey.tssTag]));
+    const factorPubID = newFactorPub.x.toString(16, 64);
+    factorEncs[factorPubID] = {
+      tssIndex: newFactorTSSIndex,
+      type: "direct",
+      userEnc: await encrypt(
+        Buffer.concat([
+          Buffer.from("04", "hex"),
+          Buffer.from(newFactorPub.x.toString(16, 64), "hex"),
+          Buffer.from(newFactorPub.y.toString(16, 64), "hex"),
+        ]),
+        Buffer.from(tssShare.toString(16, 64), "hex")
+      ),
+      serverEncs: [],
+    };
+    tKey.metadata.addTSSData({
+      tssTag: tKey.tssTag,
+      factorPubs: updatedFactorPubs,
+      factorEncs,
+    });
+  };
+
   const keyDetails = async () => {
     if (!tKey) {
       uiConsole("tKey not initialized yet");
       return;
     }
-    const keys = tKey.getKeyDetails();
-    uiConsole(keys);
+    // const keyDetails = await tKey.getKeyDetails();
+
+    uiConsole("TSS Public Key: ", tKey.getTSSPub(), "With Factors/Shares:", tKey.getMetadata().getShareDescription());
+    // return keyDetails;
   };
 
   const logout = (): void => {
@@ -412,6 +555,16 @@ function Auth() {
         <div>
           <button onClick={keyDetails} className="card">
             Key Details
+          </button>
+        </div>
+        <div>
+          <button onClick={copyTSSShareIntoManualBackupFactorkey} className="card">
+            Copy Existing TSS Share For New Factor Manual
+          </button>
+        </div>
+        <div>
+          <button onClick={createNewTSSShareIntoManualBackupFactorkey} className="card">
+            Create New TSSShare Into Manual Backup Factor
           </button>
         </div>
         <div>
