@@ -20,7 +20,7 @@ const ec = getEcCrypto();
 async function doMockLogin() {
   uiConsole("Mock login");
   const verifier = "torus-test-health";
-  const verifierId = "test800@example.com";
+  const verifierId = localStorage.getItem("mockVerifierId");
   const { signatures, postboxkey } = await fetchPostboxKeyAndSigs({ verifierName: verifier, verifierId });
   tKey.serviceProvider.postboxKey = new BN(postboxkey, "hex");
   (tKey.serviceProvider as TorusServiceProvider).verifierName = verifier;
