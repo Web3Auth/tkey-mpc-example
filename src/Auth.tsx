@@ -64,16 +64,20 @@ const isMetadataPresent = async (privateKeyBN: BN) => {
 };
 
 const addFactorKeyMetadata = async (factorKey: BN, tssShare: BN, tssIndex: number, factorKeyDescription: string) => {
+  if (!tKey) {
+    console.error("tKey not initialized yet");
+    return;
+  }
   const { requiredShares } = tKey.getKeyDetails();
   if (requiredShares > 0) {
-    uiConsole("not enough shares for metadata key");
+    console.error("not enough shares for metadata key");
   }
 
   const metadataDeviceShare = await fetchDeviceShareFromTkey();
 
   const factorIndex = getPubKeyECC(factorKey).toString("hex");
   const metadataToSet: FactorKeyCloudMetadata = {
-    deviceShare: metadataDeviceShare,
+    deviceShare: metadataDeviceShare as ShareStore,
     tssShare,
     tssIndex,
   };
@@ -88,6 +92,7 @@ const addFactorKeyMetadata = async (factorKey: BN, tssShare: BN, tssIndex: numbe
   const params = {
     module: factorKeyDescription,
     dateAdded: Date.now(),
+    tssShareIndex: tssIndex,
   };
   await tKey.addShareDescription(factorIndex, JSON.stringify(params), true);
 };
@@ -355,7 +360,7 @@ function Auth() {
       uiConsole("backupFactorIndex:", backupFactorIndex + 1);
       await addNewTSSShareAndFactor(backupFactorPub, backupFactorIndex + 1, localFactorKey);
 
-      const { tssShare: tssShare2, tssIndex: tssIndex2 } = await tKey.getTSSShare(localFactorKey);
+      const { tssShare: tssShare2, tssIndex: tssIndex2 } = await tKey.getTSSShare(backupFactorKey);
       await addFactorKeyMetadata(backupFactorKey, tssShare2, tssIndex2, "manual share");
       const serializedShare = await (tKey.modules.shareSerialization as any).serialize(backupFactorKey, "mnemonic");
 
