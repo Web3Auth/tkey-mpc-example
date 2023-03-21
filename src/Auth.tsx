@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-loop-func */
 /* eslint-disable @typescript-eslint/no-use-before-define */
 import { getPubKeyECC, getPubKeyPoint, Point, ShareStore } from "@tkey/common-types";
 import { TorusServiceProvider } from "@tkey/service-provider-torus";
@@ -340,8 +341,18 @@ function Auth() {
 
       const backupFactorKey = new BN(generatePrivate());
       const backupFactorPub = getPubKeyPoint(backupFactorKey);
-      const backupFactorIndex = Object.keys(tKey.getMetadata().getShareDescription()).length;
-      uiConsole("TSSIndex:", backupFactorIndex + 1);
+      const tKeyShareDescriptions = await tKey.getMetadata().getShareDescription();
+      let backupFactorIndex = 2;
+      for (const [key, value] of Object.entries(tKeyShareDescriptions)) {
+        // eslint-disable-next-line no-loop-func, array-callback-return
+        value.map((factor: any) => {
+          factor = JSON.parse(factor);
+          if (factor.tssShareIndex > backupFactorIndex) {
+            backupFactorIndex = factor.tssShareIndex;
+          }
+        });
+      }
+      uiConsole("backupFactorIndex:", backupFactorIndex + 1);
       await addNewTSSShareAndFactor(backupFactorPub, backupFactorIndex + 1, localFactorKey);
 
       const { tssShare: tssShare2, tssIndex: tssIndex2 } = await tKey.getTSSShare(localFactorKey);
@@ -359,8 +370,8 @@ function Auth() {
     if (!tKey) {
       throw new Error("tkey does not exist, cannot add factor pub");
     }
-    if (!localFactorKey) {
-      throw new Error("localFactorKey does not exist, cannot add factor pub");
+    if (!(newFactorTSSIndex === 2 || newFactorTSSIndex === 3)) {
+      throw new Error("tssIndex must be 2 or 3");
     }
     if (!tKey.metadata.factorPubs || !Array.isArray(tKey.metadata.factorPubs[tKey.tssTag])) {
       throw new Error("factorPubs does not exist");
