@@ -8,6 +8,7 @@ import { generateAddressFromPrivKey } from "@toruslabs/torus.js";
 import BN from "bn.js";
 import { useEffect, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
+import swal from "sweetalert";
 import Web3 from "web3";
 
 import { setupWeb3 } from "./signing";
@@ -17,7 +18,7 @@ import { DELIMITERS, FactorKeyCloudMetadata, fetchPostboxKeyAndSigs, getEcCrypto
 const ec = getEcCrypto();
 
 async function doMockLogin() {
-  console.log("Mock login");
+  uiConsole("Mock login");
   const verifier = "torus-test-health";
   const verifierId = "test800@example.com";
   const { signatures, postboxkey } = await fetchPostboxKeyAndSigs({ verifierName: verifier, verifierId });
@@ -51,6 +52,14 @@ const fetchDeviceShareFromTkey = async () => {
     uiConsole(err);
     throw err;
   }
+};
+
+const isMetadataPresent = async (privateKeyBN: BN) => {
+  const metadata = await tKey.storageLayer.getMetadata({ privKey: privateKeyBN });
+  if (metadata && Object.keys(metadata).length > 0 && (metadata as any).message !== "KEY_NOT_FOUND") {
+    return true;
+  }
+  return false;
 };
 
 const addFactorKeyMetadata = async (factorKey: BN, tssShare: BN, tssIndex: number, factorKeyDescription: string) => {
@@ -100,10 +109,15 @@ function Auth() {
   // Updates factor key
   useEffect(() => {
     if (!localFactorKey) return;
-    const localStore: Record<string, string> = JSON.parse(localStorage.getItem("tkeyLocalMap") || "{}");
-    localStore[loginResponse.userInfo.name] = localFactorKey.toString("hex");
-    localStorage.setItem("tkeyLocalMap", JSON.stringify(localStore));
-  }, [localFactorKey, loginResponse]);
+    localStorage.setItem(
+      `tKeyLocalStore\u001c${loginResponse.userInfo.verifier}\u001c${loginResponse.userInfo.verifierId}`,
+      JSON.stringify({
+        factorKey: localFactorKey.toString("hex"),
+        verifier: loginResponse.userInfo.verifier,
+        verifierId: loginResponse.userInfo.verifierId,
+      })
+    );
+  }, [localFactorKey]);
 
   // Gets the OAuth response
   useEffect(() => {
@@ -157,7 +171,7 @@ function Auth() {
       }
     }
 
-    console.log("current hash", location.hash);
+    uiConsole("current hash", location.hash);
     if (location.hash) getKeys();
     else {
       navigate({ pathname: "/" });
@@ -171,24 +185,40 @@ function Auth() {
         setOAuthShare(new BN(loginResponse.privateKey, 16));
 
         const signatures = loginResponse.signatures.filter((sign) => sign !== null);
-        const verifierId = loginResponse.userInfo.name;
+        const { verifierId } = loginResponse.userInfo;
 
-        const localData: Record<string, string> = JSON.parse(localStorage.getItem("tKeyLocalMap") || "{}");
-        const currentFactorKey: string | undefined = localData[verifierId];
+        const tKeyLocalStoreString = localStorage.getItem(
+          `tKeyLocalStore\u001c${loginResponse.userInfo.verifier}\u001c${loginResponse.userInfo.verifierId}`
+        );
+        const tKeyLocalStore = JSON.parse(tKeyLocalStoreString || "{}");
 
-        // Right not we're depending on if local storage exists to tell us if
-        // user is new or existing. TODO: change to depend on intiialize, then rehydrate
-        let factorKey: BN;
-        let deviceTSSShare: BN;
-        let deviceTSSIndex: number;
-        let existingUser = false;
-        let metadataDeviceShare: ShareStore;
-        if (!currentFactorKey) {
+        let factorKey: BN | null = null;
+
+        const existingUser = await isMetadataPresent(loginResponse.privateKey);
+
+        if (!existingUser) {
           factorKey = new BN(generatePrivate());
-          deviceTSSShare = new BN(generatePrivate());
-          deviceTSSIndex = 2;
+          const deviceTSSShare = new BN(generatePrivate());
+          const deviceTSSIndex = 2;
+          const factorPub = getPubKeyPoint(factorKey);
+          await tKey.initialize({ useTSS: true, factorPub, deviceTSSShare, deviceTSSIndex });
         } else {
-          factorKey = new BN(currentFactorKey, "hex");
+          if (tKeyLocalStore.verifier === loginResponse.userInfo.verifier && tKeyLocalStore.verifierId === loginResponse.userInfo.verifierId) {
+            factorKey = new BN(tKeyLocalStore.factorKey, "hex");
+          } else {
+            try {
+              factorKey = await swal("Enter your backup share", {
+                content: "input" as any,
+              }).then(async (value) => {
+                uiConsole(value);
+                return (tKey.modules.shareSerialization as any).deserialize(value, "mnemonic");
+              });
+            } catch (error) {
+              uiConsole(error);
+              throw new Error("Invalid backup share");
+            }
+          }
+          if (factorKey === null) throw new Error("Backup share not found");
           const factorKeyMetadata = await tKey.storageLayer.getMetadata<{
             message: string;
           }>({
@@ -197,21 +227,12 @@ function Auth() {
           if (factorKeyMetadata.message === "KEY_NOT_FOUND") {
             throw new Error("no metadata for your factor key, reset your account");
           }
-          const metadataShare: FactorKeyCloudMetadata = JSON.parse(factorKeyMetadata.message);
-
+          const metadataShare = JSON.parse(factorKeyMetadata.message);
           if (!metadataShare.deviceShare || !metadataShare.tssShare) throw new Error("Invalid data from metadata");
-          metadataDeviceShare = metadataShare.deviceShare;
-          existingUser = true;
-        }
-
-        const factorPub = getPubKeyPoint(factorKey);
-        // Initialization of tKey
-        if (existingUser) {
+          const metadataDeviceShare = metadataShare.deviceShare;
           await tKey.initialize({ neverInitializeNewKey: true });
           await tKey.inputShareStoreSafe(metadataDeviceShare, true);
-          // await tKey.reconstructKey();
-        } else {
-          await tKey.initialize({ useTSS: true, factorPub, deviceTSSShare, deviceTSSIndex });
+          await tKey.reconstructKey();
         }
 
         // Checks the requiredShares to reconstruct the tKey,
@@ -239,7 +260,12 @@ function Auth() {
         const vid = `${loginResponse.userInfo.verifier}${DELIMITERS.Delimiter1}${verifierId}`;
 
         // 5. save factor key and other metadata
-        await addFactorKeyMetadata(factorKey, factor2Share, factor2Index, "local storage key");
+        if (
+          !existingUser ||
+          !(tKeyLocalStore.verifier === loginResponse.userInfo.verifier && tKeyLocalStore.verifierId === loginResponse.userInfo.verifierId)
+        ) {
+          await addFactorKeyMetadata(factorKey, factor2Share, factor2Index, "local storage key");
+        }
         await tKey.syncLocalMetadataTransitions();
         setLocalFactorKey(factorKey);
         setSessionID(`${vid}${DELIMITERS.Delimiter2}default${DELIMITERS.Delimiter3}${tssNonce}${DELIMITERS.Delimiter4}`);
@@ -247,11 +273,6 @@ function Auth() {
         setf2Index(factor2Index);
         setCompressedTSSPubKey(compressedTSSPubKey);
         setWeb3AuthSigs(signatures);
-        console.log("PRINTS HERE");
-        console.log(factor2Share);
-        console.log(factor2Index);
-        console.log(compressedTSSPubKey);
-        console.log(signatures);
 
         uiConsole(
           "Successfully logged in & initialised MPC TKey SDK",
@@ -294,16 +315,15 @@ function Auth() {
 
       const backupFactorKey = new BN(generatePrivate());
       const backupFactorPub = getPubKeyPoint(backupFactorKey);
-
-      await copyExistingTSSShareForNewFactor(backupFactorPub, 2, localFactorKey);
+      // const backupFactorIndex = Object.keys(tKey.getMetadata().getShareDescription()).length;
+      // uiConsole("TSSIndex:", backupFactorIndex + 1);
+      await copyExistingTSSShareForNewFactor(backupFactorPub, localFactorKey);
 
       const { tssShare: tssShare2, tssIndex: tssIndex2 } = await tKey.getTSSShare(localFactorKey);
       await addFactorKeyMetadata(backupFactorKey, tssShare2, tssIndex2, "manual share");
-
+      const serializedShare = await (tKey.modules.shareSerialization as any).serialize(backupFactorKey, "mnemonic");
       await tKey.syncLocalMetadataTransitions();
-      uiConsole(` 
-      Successfully created manual backup
-      Manual Backup Factor: ${backupFactorKey.toString("hex")}`);
+      uiConsole("Successfully created manual backup. Manual Backup Factor: ", serializedShare);
     } catch (err) {
       uiConsole(`Failed to create new manual factor ${err}`);
     }
@@ -320,16 +340,16 @@ function Auth() {
 
       const backupFactorKey = new BN(generatePrivate());
       const backupFactorPub = getPubKeyPoint(backupFactorKey);
-
-      await addNewTSSShareAndFactor(backupFactorPub, 3, localFactorKey);
+      const backupFactorIndex = Object.keys(tKey.getMetadata().getShareDescription()).length;
+      uiConsole("TSSIndex:", backupFactorIndex + 1);
+      await addNewTSSShareAndFactor(backupFactorPub, backupFactorIndex + 1, localFactorKey);
 
       const { tssShare: tssShare2, tssIndex: tssIndex2 } = await tKey.getTSSShare(localFactorKey);
       await addFactorKeyMetadata(backupFactorKey, tssShare2, tssIndex2, "manual share");
+      const serializedShare = await (tKey.modules.shareSerialization as any).serialize(backupFactorKey, "mnemonic");
 
       await tKey.syncLocalMetadataTransitions();
-      uiConsole(` 
-      Successfully created manual backup
-      Manual Backup Factor: ${backupFactorKey.toString("hex")}`);
+      uiConsole(" Successfully created manual backup.Manual Backup Factor: ", serializedShare);
     } catch (err) {
       uiConsole(`Failed to create new manual factor ${err}`);
     }
@@ -342,13 +362,9 @@ function Auth() {
     if (!localFactorKey) {
       throw new Error("localFactorKey does not exist, cannot add factor pub");
     }
-    if (newFactorTSSIndex !== 2 && newFactorTSSIndex !== 3) {
-      throw new Error("tssIndex must be 2 or 3");
-    }
     if (!tKey.metadata.factorPubs || !Array.isArray(tKey.metadata.factorPubs[tKey.tssTag])) {
       throw new Error("factorPubs does not exist");
     }
-
     const existingFactorPubs = tKey.metadata.factorPubs[tKey.tssTag].slice();
     const updatedFactorPubs = existingFactorPubs.concat([newFactorPub]);
     const existingTSSIndexes = existingFactorPubs.map((fb) => tKey.getFactorEncs(fb).tssIndex);
@@ -377,12 +393,9 @@ function Auth() {
     });
   };
 
-  const copyExistingTSSShareForNewFactor = async (newFactorPub: Point, newFactorTSSIndex: number, factorKeyForExistingTSSShare: BN) => {
+  const copyExistingTSSShareForNewFactor = async (newFactorPub: Point, factorKeyForExistingTSSShare: BN) => {
     if (!tKey) {
       throw new Error("tkey does not exist, cannot copy factor pub");
-    }
-    if (newFactorTSSIndex !== 2 && newFactorTSSIndex !== 3) {
-      throw new Error("input factor tssIndex must be 2 or 3");
     }
     if (!tKey.metadata.factorPubs || !Array.isArray(tKey.metadata.factorPubs[tKey.tssTag])) {
       throw new Error("factorPubs does not exist, failed in copy factor pub");
@@ -394,13 +407,14 @@ function Auth() {
     const existingFactorPubs = tKey.metadata.factorPubs[tKey.tssTag].slice();
     const updatedFactorPubs = existingFactorPubs.concat([newFactorPub]);
     const { tssShare, tssIndex } = await tKey.getTSSShare(factorKeyForExistingTSSShare);
-    if (tssIndex !== newFactorTSSIndex) {
-      throw new Error("retrieved tssIndex does not match input factor tssIndex");
-    }
+    // use for sanity check if needed
+    // if (tssIndex !== newFactorTSSIndex) {
+    //   throw new Error("retrieved tssIndex does not match input factor tssIndex");
+    // }
     const factorEncs = JSON.parse(JSON.stringify(tKey.metadata.factorEncs[tKey.tssTag]));
     const factorPubID = newFactorPub.x.toString(16, 64);
     factorEncs[factorPubID] = {
-      tssIndex: newFactorTSSIndex,
+      tssIndex,
       type: "direct",
       userEnc: await encrypt(
         Buffer.concat([
@@ -444,9 +458,14 @@ function Auth() {
     uiConsole(metadataKey.privKey.toString("hex"));
   };
 
+  const getLoginResponse = (): void => {
+    uiConsole(loginResponse);
+    return loginResponse;
+  };
+
   const resetAccount = async () => {
     try {
-      localStorage.removeItem("tkeyLocalMap");
+      localStorage.removeItem(`tKeyLocalStore\u001c${loginResponse.userInfo.verifier}\u001c${loginResponse.userInfo.verifierId}`);
       await tKey.storageLayer.setMetadata({
         privKey: oAuthShare,
         input: { message: "KEY_NOT_FOUND" },
@@ -459,7 +478,7 @@ function Auth() {
 
   const getChainID = async () => {
     if (!web3) {
-      console.log("provider not initialized yet");
+      uiConsole("provider not initialized yet");
       return;
     }
     const chainId = await web3.eth.getChainId();
@@ -469,7 +488,7 @@ function Auth() {
 
   const getAccounts = async () => {
     if (!web3) {
-      console.log("provider not initialized yet");
+      uiConsole("provider not initialized yet");
       return;
     }
     const address = (await web3.eth.getAccounts())[0];
@@ -479,7 +498,7 @@ function Auth() {
 
   const getBalance = async () => {
     if (!web3) {
-      console.log("provider not initialized yet");
+      uiConsole("provider not initialized yet");
       return;
     }
     const address = (await web3.eth.getAccounts())[0];
@@ -490,9 +509,14 @@ function Auth() {
     return balance;
   };
 
+  const deleteTkeyLocalStore = async () => {
+    localStorage.removeItem(`tKeyLocalStore\u001c${loginResponse.userInfo.verifier}\u001c${loginResponse.userInfo.verifierId}`);
+    uiConsole("Successfully deleted tKey local store");
+  };
+
   const signMessage = async (): Promise<any> => {
     if (!web3) {
-      console.log("provider not initialized yet");
+      uiConsole("provider not initialized yet");
       return;
     }
     const fromAddress = (await web3.eth.getAccounts())[0];
@@ -521,7 +545,7 @@ function Auth() {
 
   const sendTransaction = async () => {
     if (!web3) {
-      console.log("provider not initialized yet");
+      uiConsole("provider not initialized yet");
       return;
     }
     const fromAddress = (await web3.eth.getAccounts())[0];
@@ -546,78 +570,67 @@ function Auth() {
         & ReactJS Ethereum Example
       </h1>
 
+      <h2 className="subtitle">Account Details</h2>
       <div className="flex-container">
-        <div>
-          <button onClick={getUserInfo} className="card">
-            Get User Info
-          </button>
-        </div>
-        <div>
-          <button onClick={keyDetails} className="card">
-            Key Details
-          </button>
-        </div>
-        <div>
-          <button onClick={copyTSSShareIntoManualBackupFactorkey} className="card">
-            Copy Existing TSS Share For New Factor Manual
-          </button>
-        </div>
-        <div>
-          <button onClick={createNewTSSShareIntoManualBackupFactorkey} className="card">
-            Create New TSSShare Into Manual Backup Factor
-          </button>
-        </div>
-        <div>
-          <button onClick={getMetadataKey} className="card">
-            Metadata Key
-          </button>
-        </div>
-        <div>
-          <button onClick={resetAccount} className="card">
-            Reset Account
-          </button>
-        </div>
-        <div>
-          <button onClick={getChainID} className="card">
-            Get Chain ID
-          </button>
-        </div>
-        <div>
-          <button onClick={getAccounts} className="card">
-            Get Accounts
-          </button>
-        </div>
-        <div>
-          <button onClick={getBalance} className="card">
-            Get Balance
-          </button>
-        </div>
+        <button onClick={getUserInfo} className="card">
+          Get User Info
+        </button>
 
-        <div>
-          <button onClick={signMessage} className="card">
-            Sign Message
-          </button>
-        </div>
-        <div>
-          <button onClick={sendTransaction} className="card">
-            Send Transaction
-          </button>
-        </div>
-        {/* <div>
-          <button onClick={addNewTSSShareAndFactor} className="card">
-            addNewTSSShareAndFactor
-          </button>
-        </div>
-        <div>
-          <button onClick={copyExistingTSSShareForNewFactor} className="card">
-            copyExistingTSSShareForNewFactor
-          </button>
-        </div> */}
-        <div>
-          <button onClick={logout} className="card">
-            Log Out
-          </button>
-        </div>
+        <button onClick={getLoginResponse} className="card">
+          See Login Response
+        </button>
+
+        <button onClick={keyDetails} className="card">
+          Key Details
+        </button>
+
+        <button onClick={getMetadataKey} className="card">
+          Metadata Key
+        </button>
+
+        <button onClick={logout} className="card">
+          Log Out
+        </button>
+      </div>
+      <h2 className="subtitle">Recovery/ Key Manipulation</h2>
+      <div className="flex-container">
+        <button onClick={copyTSSShareIntoManualBackupFactorkey} className="card">
+          Copy Existing TSS Share For New Factor Manual
+        </button>
+
+        <button onClick={createNewTSSShareIntoManualBackupFactorkey} className="card">
+          Create New TSSShare Into Manual Backup Factor
+        </button>
+
+        <button onClick={deleteTkeyLocalStore} className="card">
+          Delete tKey Local Store (enables Recovery Flow)
+        </button>
+
+        <button onClick={resetAccount} className="card">
+          Reset Account (CAUTION)
+        </button>
+      </div>
+      <h2 className="subtitle">Blockchain Calls</h2>
+      <div className="flex-container">
+        <button onClick={getChainID} className="card">
+          Get Chain ID
+        </button>
+
+        <button onClick={getAccounts} className="card">
+          Get Accounts
+        </button>
+
+        <button onClick={getBalance} className="card">
+          Get Balance
+        </button>
+
+        <button onClick={signMessage} className="card">
+          Sign Message
+        </button>
+
+        <button onClick={sendTransaction} className="card">
+          Send Transaction
+        </button>
       </div>
 
       <div id="console" style={{ whiteSpace: "pre-line" }}>

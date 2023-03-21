@@ -15,6 +15,8 @@ function Login() {
   const [email, setEmail] = useState("");
   const [isWebAuthnLoginEnabled, setIsWebAuthnLoginEnabled] = useState(false);
   const [isWebAuthnRegistrationEnabled, setIsWebAuthnRegistrationEnabled] = useState(false);
+  const [mockVerifierId, setMockVerifierId] = useState<string | null>(null);
+
   const navigate = useNavigate();
   const isWebAuthnSupported = browserSupportsWebAuthn();
   console.log(isWebAuthnSupported, "isWebAuthnSupported");
@@ -29,6 +31,20 @@ function Login() {
       }
     };
     init();
+  }, []);
+
+  useEffect(() => {
+    if (!mockVerifierId) return;
+    localStorage.setItem(`mockVerifierId`, mockVerifierId);
+  }, [mockVerifierId]);
+
+  useEffect(() => {
+    let verifierId: string;
+
+    const localMockVerifierId = localStorage.getItem("mockVerifierId");
+    if (localMockVerifierId) verifierId = localMockVerifierId;
+    else verifierId = `${Math.round(Math.random() * 100000)}@example.com`;
+    setMockVerifierId(verifierId);
   }, []);
 
   const onEmailChanged = async (e: FormEvent<HTMLInputElement>) => {
@@ -150,6 +166,8 @@ function Login() {
             </Button>
           )}
           <Divider plain>OR</Divider>
+          <Text type="secondary">Mock Login Seed</Text>
+          <Input size="large" type="email" value={mockVerifierId as string} onChange={(e) => setMockVerifierId(e.target.value)} />
           <Button size="large" type="primary" onClick={triggerMockLogin} style={{ width: "100%", marginTop: "12px" }}>
             MockLogin
           </Button>

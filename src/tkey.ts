@@ -1,7 +1,7 @@
 import ThresholdKey from "@tkey/core";
 import { TorusServiceProvider } from "@tkey/service-provider-torus";
+import { ShareSerializationModule } from "@tkey/share-serialization";
 import { TorusStorageLayer } from "@tkey/storage-layer-torus";
-import { WebStorageModule } from "@tkey/web-storage";
 
 // Configuration of Service Provider
 
@@ -21,13 +21,13 @@ const storageLayer = new TorusStorageLayer({
 });
 
 // Configuration of Modules
-const webStorageModule = new WebStorageModule();
+const shareSerializationModule = new ShareSerializationModule();
 
 // Instantiation of tKey
 export const tKey = new ThresholdKey({
   enableLogging: true,
   modules: {
-    webStorage: webStorageModule,
+    shareSerialization: shareSerializationModule,
   },
   serviceProvider: torusSp,
   storageLayer,

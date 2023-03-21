@@ -191,6 +191,7 @@ export const uiConsole = (...args: any[]): void => {
   if (el) {
     el.innerHTML = JSON.stringify(args || {}, null, 2);
   }
+  // eslint-disable-next-line no-console
   console.log(...args);
 };
 
