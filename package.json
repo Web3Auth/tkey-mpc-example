@@ -5,7 +5,7 @@
 	"dependencies": {
 		"@ethereumjs/common": "^3.1.1",
 		"@ethereumjs/tx": "^4.1.1",
-		"@simplewebauthn/browser": "^7.1.0",
+		"@simplewebauthn/browser": "^8.3.4",
 		"@tkey/common-types": "8.0.0-alpha.0",
 		"@tkey/core": "8.0.0-alpha.0",
 		"@tkey/service-provider-torus": "8.0.0-alpha.0",

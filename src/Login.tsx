@@ -92,7 +92,7 @@ function Login() {
       const url = new URL(`${BACKEND_URL}/api/v2/webauthn-generate-authentication-options`);
       url.searchParams.append("email", email);
       const resp = await get(url.href);
-      const attestationResponse = await startAuthentication(resp);
+      const attestationResponse = await startAuthentication(resp as any);
       const url2 = new URL(`${BACKEND_URL}/api/v2/webauthn-verify-authentication`);
       const resp2 = await post<{ verified: boolean; id_token: string }>(url2.href, { attestationResponse, email });
       if (resp2.verified) {
@@ -113,7 +113,7 @@ function Login() {
       const url = new URL(`${BACKEND_URL}/api/v2/webauthn-generate-registration-options`);
       url.searchParams.append("email", email);
       const resp = await get(url.href);
-      const attestationResponse = await startRegistration(resp);
+      const attestationResponse = await startRegistration(resp as any);
       const url2 = new URL(`${BACKEND_URL}/api/v2/webauthn-verify-registration`);
       const resp2 = await post<{ verified: boolean }>(url2.href, { attestationResponse, email });
       if (resp2.verified) {

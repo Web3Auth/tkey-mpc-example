@@ -5,7 +5,7 @@ import EC from "elliptic";
 import rs from "jsrsasign";
 import { io, Socket } from "socket.io-client";
 
-export const wcVerifier = "wallet-connect-test";
+export const wcVerifier = "passkeys-web3auth-demo";
 export const BACKEND_URL = "https://wc-admin.web3auth.com";
 
 const torusNodeEndpoints = [
