@@ -152,9 +152,9 @@ function Login() {
           <Text type="secondary">Enter your email: </Text>
           <Input size="large" type="email" placeholder="Enter your email..." onChange={(e) => onEmailChanged(e)} value={email} />
 
-          <Button size="large" type="primary" onClick={triggerEmailLogin} style={{ width: "100%", marginTop: "12px" }}>
+          {/* <Button size="large" type="primary" onClick={triggerEmailLogin} style={{ width: "100%", marginTop: "12px" }}>
             Login
-          </Button>
+          </Button> */}
           {isWebAuthnRegistrationEnabled && (
             <Button size="large" type="default" onClick={triggerPassKeyRegistration} style={{ width: "100%", marginTop: "12px" }}>
               Register with PassKey
@@ -165,12 +165,12 @@ function Login() {
               Login with PassKey
             </Button>
           )}
-          <Divider plain>OR</Divider>
+          {/* <Divider plain>OR</Divider>
           <Text type="secondary">Mock Login Seed</Text>
           <Input size="large" type="email" value={mockVerifierId as string} onChange={(e) => setMockVerifierId(e.target.value)} />
           <Button size="large" type="primary" onClick={triggerMockLogin} style={{ width: "100%", marginTop: "12px" }}>
             MockLogin
-          </Button>
+          </Button> */}
         </Col>
       </Row>
 
